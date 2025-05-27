@@ -10,6 +10,8 @@ The platform consists of several components:
 3. **Processing**: AWS Step Functions and AWS Batch for factor mining
 4. **Visualization**: Streamlit application for visualizing results
 
+![Factor Mining Platform Architecture](docs/architecture.png)
+
 ## Repository Structure
 
 - `terraform/`: Terraform code for provisioning AWS resources

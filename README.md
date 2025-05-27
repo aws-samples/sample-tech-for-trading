@@ -20,13 +20,11 @@ Details about the cloud services used and the overall system architecture will b
 
 ## Contributors
 
-We welcome contributions from the community! If you'd like to contribute, please:
+* Jacky Wu
+* Ken Chow
+* Melody Lin
 
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request
-
-For major changes, please open an issue first to discuss what you would like to change.
+We especially invite AWS experts to submit artifacts that demonstrate quantitative trading solutions on AWS. Please contact awsjacky@amazon.com for more information.
 
 ## Security
 
