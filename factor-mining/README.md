@@ -117,6 +117,25 @@ The modules should be deployed in the following order to ensure dependencies are
    ./deploy.sh
    ```
 
+### Visualization and Factor Analysis
+
+The visualization component provides critical insights into factor performance and statistical significance:
+
+#### T-Statistic Analysis
+T-stat measures statistical significance of factors. It's crucial in factor modeling to determine which factors reliably predict returns. The following chart displays T-statistic distributions for various factor types in financial modeling after running the same factor for different data ranges on DJIA 30.
+
+![T-Statistic Distribution](docs/fm%20t-stat.jpg)
+
+#### R-Squared Analysis
+R-squared measures the proportion of variance in the stock return explained by the factors. The chart shows R-squared distributions for different factor types after running the same factor for different data ranges on DJIA 30. This helps identify which factors explain more variance in stock returns compared to other factor types.
+
+![R-Squared Distribution](docs/fm%20r-squared.jpg)
+
+#### Beta Analysis
+The following chart takes Beta into consideration, which measures a factor's sensitivity to market movements. The chart displays R-squared as bubble size, representing a factor's explanatory power.
+
+![Beta Analysis](docs/fm%20beta.jpg)
+
 ### Clean up
 
 You can go to the folder you deployed, and run
