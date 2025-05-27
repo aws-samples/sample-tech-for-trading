@@ -1,0 +1,179 @@
+{
+  "Comment": "Factor Modeling Workflow with AWS Batch Integration and Parallel Processing",
+  "StartAt": "ValidateInputChoice",
+  "States": {
+    "ValidateInputChoice": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.start_date",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.end_date",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.tickers",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.factor",
+              "IsPresent": true
+            }
+          ],
+          "Next": "ProcessDateTickerThread"
+        }
+      ],
+      "Default": "HandleError"
+    },
+    "ProcessDateTickerThread": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ProcessDateTickerThreadLambdaArn}",
+        "Payload": {
+          "start_date.$": "$.start_date",
+          "end_date.$": "$.end_date",
+          "tickers.$": "$.tickers",
+          "thread_no.$": "$.thread_no",
+          "parallel_m.$": "$.parallel_m",
+          "factor.$": "$.factor"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "Next": "ParallelBatchProcessing"
+    },
+    "ParallelBatchProcessing": {
+      "Type": "Map",
+      "ItemsPath": "$.batch_jobs",
+      "MaxConcurrency": 30,
+      "ResultPath": "$.dateRangeResults",
+      "Iterator": {
+        "StartAt": "SubmitBatchJob",
+        "States": {
+          "SubmitBatchJob": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::batch:submitJob.sync",
+            "Parameters": {
+              "JobName": "FactorModelingJob",
+              "JobQueue": "${BatchJobQueueArn}",
+              "JobDefinition": "${BatchJobDefinitionName}",
+              "Parameters": {
+                "start_date.$": "$.start_date",
+                "end_date.$": "$.end_date",
+                "batch_no": "1",
+                "factor.$": "$.factor",
+                "tickers.$": "$.tickers"
+              }
+            },
+            "End": true
+          }
+        }
+      },
+      "Next": "PrepareTickerProcessing"
+    },
+    "PrepareTickerProcessing": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ProcessDateTickerThreadLambdaArn}",
+        "Payload": {
+          "operation": "prepare_ticker_jobs",
+          "start_date.$": "$.original_start_date",
+          "end_date.$": "$.original_end_date",
+          "tickers.$": "$.tickers",
+          "thread_no.$": "$.thread_no",
+          "parallel_m.$": "$.parallel_m",
+          "factor.$": "$.factor",
+          "dateRangeResults.$": "$.dateRangeResults"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "Next": "TickerBatchProcessing"
+    },
+    "TickerBatchProcessing": {
+      "Type": "Map",
+      "ItemsPath": "$.tickerJobs",
+      "MaxConcurrency": 30,
+      "ResultPath": "$.tickerResults",
+      "Iterator": {
+        "StartAt": "SubmitTickerGroupBatchJob",
+        "States": {
+          "SubmitTickerGroupBatchJob": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::batch:submitJob.sync",
+            "Parameters": {
+              "JobName": "FactorModelingTickerGroupJob",
+              "JobQueue": "${BatchJobQueueArn}",
+              "JobDefinition": "${BatchJobDefinitionName}",
+              "Parameters": {
+                "start_date.$": "$.start_date",
+                "end_date.$": "$.end_date",
+                "batch_no": "2",
+                "factor.$": "$.factor",
+                "tickers.$": "$.ticker_group"
+              }
+            },
+            "End": true
+          }
+        }
+      },
+      "Next": "SummarizationBatch"
+    },
+    "SummarizationBatch": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::batch:submitJob.sync",
+      "Parameters": {
+        "JobName": "FactorModelingSummarizationJob",
+        "JobQueue": "${BatchJobQueueArn}",
+        "JobDefinition": "${BatchJobDefinitionName}",
+        "Parameters": {
+          "start_date.$": "$.original_start_date",
+          "end_date.$": "$.original_end_date",
+          "batch_no": "3",
+          "factor.$": "$.factor",
+          "tickers.$": "$.tickers"
+        }
+      },
+      "ResultPath": "$.summarizationResult",
+      "Next": "ProcessResults"
+    },
+    "ProcessResults": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ProcessResultsLambdaArn}",
+        "Payload": {
+          "dateRangeResults.$": "$.dateRangeResults",
+          "tickerResults.$": "$.tickerResults",
+          "summarizationResult.$": "$.summarizationResult",
+          "metadata": {
+            "start_date.$": "$.original_start_date",
+            "end_date.$": "$.original_end_date",
+            "tickers.$": "$.tickers",
+            "thread_no.$": "$.thread_no",
+            "parallel_m.$": "$.parallel_m",
+            "factor.$": "$.factor"
+          }
+        }
+      },
+      "OutputPath": "$.Payload",
+      "End": true
+    },
+    "HandleError": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${HandleErrorLambdaArn}",
+        "Payload": {
+          "error.$": "$",
+          "cause.$": "$$.Execution.Input"
+        }
+      },
+      "End": true
+    }
+  }
+}

@@ -1,0 +1,6 @@
+aws_region            = "us-west-2"
+instance_type     = "r6i.xlarge"
+volume_size       = 1000
+project_name      = "factor-mining"
+environment       = "dev"
+# key_name is no longer needed as it's automatically generated

@@ -1,0 +1,16 @@
+aws_region = "us-east-1"
+financial_reports_bucket_name = "financial-reports-bucket-name"
+clickhouse_db_name = "factor-modelling"
+
+# Amazon Bedrock configuration
+bedrock_model_id = "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
+
+# Lambda configuration
+lambda_timeout = 300
+lambda_memory_size = 512
+
+# Resource tagging
+tags = {
+  Project = "Factor Mining Platform"
+  Environment = "Production"
+}

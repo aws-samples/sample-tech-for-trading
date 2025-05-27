@@ -1,0 +1,6 @@
+aws_region = ""
+vpc_name       = ""
+clickhouse_host = ""
+clickhouse_db_name = ""
+state_machine_arn = "arn:aws:states:xxx"
+app_name = "factor mining result dashboard"

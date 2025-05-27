@@ -1,0 +1,6 @@
+aws_region = "us-east-1"
+lambda_artifacts_bucket_name = "artifact-unique-name"
+terraform_state_bucket_name = "state-unique-name"
+code_signing_profile_name = "signer-unique-name"
+enable_code_signing = true
+clickhouse_layer_zip_path = "./clickhouse-driver-layer.zip"

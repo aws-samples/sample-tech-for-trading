@@ -1,0 +1,9 @@
+aws_region = "us-east-1"
+resource_prefix = "fm"
+environment = "dev"
+clickhouse_database = "factor_modeling"
+tickers = "AAPL,AMGN,AMZN,AXP,BA,CAT,CRM,CSCO,CVX,DIS,GS,HD,HON,IBM,JNJ,JPM,KO,MCD,MMM,MRK,MSFT,NKE,NVDA,PG,SHW,TRV,UNH,V,VZ,WMT"
+start_date = "2020-01-01"
+end_date = "2023-01-01"
+thread_no = 5
+parallel_m = 6

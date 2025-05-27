@@ -1,0 +1,3 @@
+aws_region            = "us-east-1"
+s3_bucket_prefix = "stock-news-data"
+tavily_api_key = "tvly-12333"
