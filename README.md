@@ -21,7 +21,7 @@ Details about the cloud services used and the overall system architecture will b
 ## Contributors
 
 * Jacky Wu
-* Ken Chow
+* Ken Cho
 * Melody Lin
 * Charlie Chiu
 
