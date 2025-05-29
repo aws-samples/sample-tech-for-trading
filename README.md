@@ -23,6 +23,7 @@ Details about the cloud services used and the overall system architecture will b
 * Jacky Wu
 * Ken Chow
 * Melody Lin
+* Charlie Chiu
 
 We especially invite AWS experts to submit artifacts that demonstrate quantitative trading solutions on AWS. Please contact awsjacky@amazon.com for more information.
 
