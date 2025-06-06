@@ -8,7 +8,7 @@ This project provides resources, code samples, and architecture patterns for bui
 
 ## Key Features
 
-* **Factor Mining**: Implementation of multi-factor models for asset pricing and risk analysis using cloud compute services
+* **Factor Mining**: Implementation of fast factor mining using cloud GenAI and serverless services.
 
 ## Getting Started
 
