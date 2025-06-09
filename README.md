@@ -8,7 +8,7 @@ This project provides resources, code samples, and architecture patterns for bui
 
 ## Key Features
 
-* **Factor Mining**: Implementation of multi-factor models for asset pricing and risk analysis using cloud compute services
+* **Factor Mining**: Implementation of fast factor mining using cloud GenAI and serverless services.
 
 ## Getting Started
 
@@ -21,8 +21,9 @@ Details about the cloud services used and the overall system architecture will b
 ## Contributors
 
 * Jacky Wu
-* Ken Chow
+* Ken Cho
 * Melody Lin
+* Charlie Chiu
 
 We especially invite AWS experts to submit artifacts that demonstrate quantitative trading solutions on AWS. Please contact awsjacky@amazon.com for more information.
 
@@ -32,4 +33,4 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 
 ## License
 
-This library is licensed under the MIT-0 License. See the LICENSE file.
+This library is licensed under the MIT-0 License. See the LICENSE file
