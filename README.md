@@ -9,6 +9,7 @@ This project provides resources, code samples, and architecture patterns for bui
 ## Key Features
 
 * **Factor Mining**: Implementation of fast factor mining using cloud GenAI and serverless services.
+* **Investment Advisor**: Building a personalized investment advisor using Agentic AI's core patterns
 
 ## Getting Started
 
@@ -24,6 +25,7 @@ Details about the cloud services used and the overall system architecture will b
 * Ken Cho
 * Melody Lin
 * Charlie Chiu
+* Kwangwoo Lee
 
 We especially invite AWS experts to submit artifacts that demonstrate quantitative trading solutions on AWS. Please contact awsjacky@amazon.com for more information.
 
