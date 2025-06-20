@@ -14,7 +14,7 @@ variable "lambda_timeout" {
 variable "clickhouse_db_name" {
   description = "clickhouse db name"
   type        = string
-  default     = "factor_modeling"
+  default     = "factor_modeling_db"
 }
 
 variable "lambda_memory_size" {
