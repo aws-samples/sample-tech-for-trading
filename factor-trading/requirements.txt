@@ -11,7 +11,7 @@ git+https://github.com/mementum/backtrader.git@0fa63ef4a35dc53cc7320813f8b15480c
 # Alternative: backtrader-binance-futures>=1.0.2 (maintained fork with better Python 3.x support)
 
 # Airflow dependencies
-apache-airflow==2.7.1
+apache-airflow==2.10.3
 apache-airflow-providers-amazon==8.1.0
 
 # Development dependencies
