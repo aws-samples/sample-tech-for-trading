@@ -1,0 +1,10 @@
+{
+    "batch_job_queue": "Used by BatchOperator (not passed to container)",
+    "batch_job_definition": "Used by BatchOperator (not passed to container)", 
+    "trading_strategies_bucket": "RESULTS_BUCKET",
+    "db_host": "DB_HOST",
+    "db_port": "DB_PORT",
+    "db_user": "DB_USER", 
+    "db_password": "DB_PASSWORD",
+    "db_database": "DB_DATABASE"
+}

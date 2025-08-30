@@ -1,0 +1,21 @@
+# Core dependencies
+pandas>=2.2.0
+numpy>=1.26.0
+matplotlib==3.7.3  # More compatible with backtrader than 3.8.x
+clickhouse-driver==0.2.6
+python-dotenv==1.0.0
+boto3==1.28.38
+
+# Backtrader - using a specific commit that's more compatible with Python 3.12
+git+https://github.com/mementum/backtrader.git@0fa63ef4a35dc53cc7320813f8b15480c8f85517#egg=backtrader
+# Alternative: backtrader-binance-futures>=1.0.2 (maintained fork with better Python 3.x support)
+
+# Airflow dependencies
+apache-airflow==2.7.1
+apache-airflow-providers-amazon==8.1.0
+
+# Development dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0
+flake8>=6.1.0
+black>=23.7.0
