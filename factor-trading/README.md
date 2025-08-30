@@ -9,37 +9,31 @@ factor-trading/
 ├── README.md
 ├── requirements.txt
 ├── .env.example
+├── .gitignore
 ├── local_backtest.py
 ├── src/
-│   ├── trading-strategies-model/
-│   │   ├── strategies/
-│   │   │   ├── __init__.py
-│   │   │   ├── base_strategy.py
-│   │   │   ├── long_short_equity.py
-│   │   │   └── ... (other strategies)
-│   │   ├── backtesting/
-│   │   │   ├── __init__.py
-│   │   │   ├── backtest_engine.py
-│   │   ├── utils/
-│   │       ├── __init__.py
-│   │       ├── data_loader.py
+│   ├── trading_strategies_model/
+│   ├── visualization/
 │   ├── dags/
-│   │   ├── backtest_dag.py
-│   │   └── strategy_execution_dag.py
-│   └── batch-jobs/
-│       ├── backtest_job.py
-│       └── strategy_execution_job.py
+│   ├── data_prepare/
+│   └── batch_jobs/
+├── scripts/
+│   ├── 1.test_docker_build.sh
+│   ├── 2.build_and_push_ecr.sh
+│   ├── 3.deploy_batch_mwaa.sh
+│   ├── 4.deploy_dag.sh
+│   └── 5.deploy_visualization.sh
+├── docker/
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── .dockerignore
 └── cdk/
     ├── app.py
     ├── cdk.json
     ├── requirements.txt
-    ├── setup.py
-    └── trading_strategies/
-        ├── __init__.py
-        ├── trading_strategies_stack.py
-        ├── batch_stack.py
-        ├── mwaa_stack.py
-        └── storage_stack.py
+    ├── visualization_stack.py
+    ├── trading_strategies/
+    └── visualization/
 ```
 
 ## Features
