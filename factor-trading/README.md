@@ -121,7 +121,7 @@ class MyCustomStrategy(BaseStrategy):
 
 #### 1.3 Test Locally with local_backtest.py
 
-Before deploying to AWS, thoroughly test your strategy locally. You need to set up the clickhouse in the .env file. You see the .env.example as below:
+Before deploying to AWS, thoroughly test your strategy locally. You need to set up the clickhouse in the ./.env file. You see the .env.example as below:
 ```
 # ClickHouse connection settings
 CLICKHOUSE_HOST=
@@ -251,7 +251,16 @@ The script provides verification, displays the MWAA web UI URL, and guides you t
 
 ### Step 5: Deploy Visualization Dashboard
 
-Deploy an interactive Streamlit dashboard to analyze your backtest results:
+Deploy an interactive Streamlit dashboard to analyze your backtest results. You need to set up the clickhouse in the src/visualization/.env file. You see the .env.example as below:
+```
+# ClickHouse connection settings
+CLICKHOUSE_HOST=
+CLICKHOUSE_PORT=9000
+CLICKHOUSE_USER=default
+CLICKHOUSE_PASSWORD=
+CLICKHOUSE_DATABASE=factor_modeling
+```
+
 
 ```bash
 # Automated deployment with existing VPC, such as vpc-0dae208a35ee2453f
@@ -259,12 +268,6 @@ Deploy an interactive Streamlit dashboard to analyze your backtest results:
 
 # And with an IP to whitelist the access to the dashboard
 ./scripts/5.deploy_visualization.sh vpc-xxxxxxxxx 1.2.3.4
-
-# Manual CDK deployment
-cd cdk/visualization
-python3 -m venv venv && source venv/bin/activate
-pip install -r ../requirements.txt
-cdk deploy -c existing_vpc_id=vpc-xxxxxxxxx -c your_ip=1.2.3.4
 ```
 
 **What you get:**

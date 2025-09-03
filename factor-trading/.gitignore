@@ -9,6 +9,8 @@ ENV/
 
 # cdk out
 cdk.out/
+cdk.context.json
+cdk-outputs.json
 
 # Python cache files
 __pycache__/
