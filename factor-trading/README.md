@@ -63,8 +63,8 @@ The project uses the following AWS services:
 
 - AWS CLI configured with appropriate permissions
 - Docker installed and running
-- Python 3.11+ with virtual environment
-- ClickHouse connection details (for data access)
+- Python 3.12
+- ClickHouse connection (for data access)
 
 ### Requirements for existing VPC 
 
@@ -121,7 +121,15 @@ class MyCustomStrategy(BaseStrategy):
 
 #### 1.3 Test Locally with local_backtest.py
 
-Before deploying to AWS, thoroughly test your strategy locally:
+Before deploying to AWS, thoroughly test your strategy locally. You need to set up the clickhouse in the .env file. You see the .env.example as below:
+```
+# ClickHouse connection settings
+CLICKHOUSE_HOST=
+CLICKHOUSE_PORT=9000
+CLICKHOUSE_USER=default
+CLICKHOUSE_PASSWORD=
+CLICKHOUSE_DATABASE=factor_modeling
+```
 
 ```bash
 # Basic backtest
@@ -150,7 +158,7 @@ python local_backtest.py --start-date 2020-01-01 --end-date 2023-12-31 --rebalan
 
 ### Step 2: Docker Containerization of Trading Stategy
 
-#### 2.1 Build and Push to ECR
+#### 2.1 Build and Push to ECR for AWS Batch
 
 Deploy your tested strategy to Amazon ECR:
 

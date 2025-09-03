@@ -215,7 +215,7 @@ def display_backtest_details(backtest_id):
     
     with col2:
         st.metric("Sharpe Ratio", f"{float(info['sharpe_ratio']):.2f}")
-        st.metric("Max Drawdown", f"{float(info['max_drawdown']):.2%}")
+        st.metric("Max Drawdown", f"{float(info['max_drawdown']):.2f}%")
     
     with col3:
         st.metric("Win Rate", f"{float(info['win_rate']):.2%}")
@@ -385,7 +385,7 @@ def main():
         
         with col4:
             avg_drawdown = filtered_backtests['max_drawdown'].mean()
-            st.metric("Avg Max Drawdown", f"{avg_drawdown:.2%}")
+            st.metric("Avg Max Drawdown", f"{avg_drawdown:.2f}%")
         
         # Performance charts
         st.header("📈 Performance Analysis")
@@ -410,7 +410,7 @@ def main():
         
         # Format columns
         display_df['annual_return'] = display_df['annual_return'].apply(lambda x: f"{float(x):.2%}")
-        display_df['max_drawdown'] = display_df['max_drawdown'].apply(lambda x: f"{float(x):.2%}")
+        display_df['max_drawdown'] = display_df['max_drawdown'].apply(lambda x: f"{float(x):.2f}%")
         display_df['win_rate'] = display_df['win_rate'].apply(lambda x: f"{float(x):.2%}")
         display_df['sharpe_ratio'] = display_df['sharpe_ratio'].apply(lambda x: f"{float(x):.2f}")
         display_df['profit_factor'] = display_df['profit_factor'].apply(lambda x: f"{float(x):.2f}")
