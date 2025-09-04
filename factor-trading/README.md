@@ -61,26 +61,24 @@ The project uses the following AWS services:
 
 ### 📋 **Prerequisites**
 
-- AWS CLI configured with appropriate permissions
+- Python 3.12 
 - Docker installed and running
-- Python 3.12
-- ClickHouse connection (for data access)
-
-### Requirements for existing VPC 
-
-- Must have both public and private subnets
-- Private subnets should have NAT Gateway access for internet connectivity
-- Must be in the same region as your deployment
+- AWS CLI configured with appropriate permissions
+- An existing Amazon VPC with both public and private subnets, where private subnets have NAT Gateway for internet access.
+- ClickHouse connection accessible to backtesting AWS Batch and Visualization application on Amazon EC2 
 
 
-
-
-
-## Development Procedures
+## Development and Deployment Procedures
 
 This section provides a complete development workflow for implementing and deploying trading strategies using this framework.
 
 ### Step 1: Local Development and Testing
+This project uses Backtrader, a popular open-source Python framework for backtesting trading strategies. Backtrader provides:
+
+- Event-driven architecture
+- Flexible strategy development
+- Built-in analyzers and performance metrics
+
 
 #### 1.1 Set Up Local Environment
 
@@ -103,21 +101,16 @@ cp .env.example .env
 
 #### 1.2 Develop Your Trading Strategy
 
-Create your custom strategy by extending the base strategy class:
 
-```python
-# Example: src/trading_strategies_model/strategies/my_custom_strategy.py
-from .base_strategy import BaseStrategy
+To add a new strategy:
 
-class MyCustomStrategy(BaseStrategy):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Initialize your strategy parameters
-    
-    def next(self):
-        # Implement your trading logic
-        pass
-```
+1. Create a new Python file in `src/trading-strategies-model/strategies/`
+2. Extend the `BaseStrategy` class
+3. Implement the required methods
+4. Register the strategy in the Airflow DAG
+
+See `src/trading-strategies-model/strategies/long_short_equity.py` for an example implementation.
+
 
 #### 1.3 Test Locally with local_backtest.py
 
@@ -157,6 +150,8 @@ python local_backtest.py --start-date 2020-01-01 --end-date 2023-12-31 --rebalan
 - [ ] Results are saved to `backtest_results/` directory
 
 ### Step 2: Docker Containerization of Trading Stategy
+
+The framework leverages AWS Batch for parallel backtesting. Multiple parameter combinations can be tested simultaneously.
 
 #### 2.1 Build and Push to ECR for AWS Batch
 
@@ -218,7 +213,16 @@ The script will:
 
 ### Step 4: Deploy DAG to MWAA
 
-Deploy your backtest framework DAGs to the MWAA environment using the comprehensive deployment script:
+The framework includes configurable take-profit and stop-loss mechanisms:
+- Take-profit: Automatically exits a position when it reaches a specified profit percentage
+- Stop-loss: Automatically exits a position when it reaches a specified loss percentage
+
+To prevent excessive trading and reduce transaction costs, the framework includes a cooldown period feature:
+- After a position is closed due to take-profit or stop-loss, the security enters a cooldown period
+- During the cooldown period, the strategy will not re-enter a position in that security
+- The cooldown period is configurable in days
+
+You can set up the parameters above in your backtest framework DAGs and deploy the DAGs to the MWAA environment using the comprehensive deployment script:
 
 ```bash
 # Basic deployment (auto-detects MWAA environment and S3 bucket)
@@ -304,67 +308,15 @@ python local_backtest.py --strategy UpdatedStrategy --start-date 2023-01-01 --en
 ./scripts/3.deploy_batch_mwaa.sh --image-uri YOUR_NEW_ECR_URI
 ```
 
-#### Monitoring and Troubleshooting
+## Cleaning up 
 
-```bash
-# View CloudWatch logs
-aws logs describe-log-groups --log-group-name-prefix "/factor-trading"
-
-# Check job status
-aws batch list-jobs --job-queue factor-trading-job-queue-00
-
-# Debug failed jobs
-aws batch describe-jobs --jobs JOB_ID
+After evaluating the framework and to avoid unnecessary charges, navigate to your deployment folder and run: 
+```bash 
+cdk destroy --all 
 ```
+Or you can delete the stacks created by the CDK deploy in AWS CloudFormation.  
 
-
-
-## Backtesting Framework
-
-This project uses Backtrader, a popular open-source Python framework for backtesting trading strategies. Backtrader provides:
-
-- Event-driven architecture
-- Flexible strategy development
-- Built-in analyzers and performance metrics
-
-## Risk Management Features
-
-### Take-Profit and Stop-Loss
-
-The framework includes configurable take-profit and stop-loss mechanisms:
-- Take-profit: Automatically exits a position when it reaches a specified profit percentage
-- Stop-loss: Automatically exits a position when it reaches a specified loss percentage
-
-### Cooldown Period
-
-To prevent excessive trading and reduce transaction costs, the framework includes a cooldown period feature:
-- After a position is closed due to take-profit or stop-loss, the security enters a cooldown period
-- During the cooldown period, the strategy will not re-enter a position in that security
-- The cooldown period is configurable in days
-
-## Parallel Backtesting with AWS Batch
-
-The framework leverages AWS Batch for parallel backtesting:
-- Multiple parameter combinations can be tested simultaneously
-- AWS MWAA orchestrates the parallel execution of AWS Batch jobs
-- Parameters that can be varied include:
-  - Take-profit and stop-loss thresholds
-  - Rebalance periods
-  - Cooldown periods
-  - Strategy-specific parameters (e.g., long/short percentages)
-- Results are stored in S3 for analysis
-
-## Adding New Strategies
-
-To add a new strategy:
-
-1. Create a new Python file in `src/trading-strategies-model/strategies/`
-2. Extend the `BaseStrategy` class
-3. Implement the required methods
-4. Register the strategy in the Airflow DAG
-
-See `src/trading-strategies-model/strategies/long_short_equity.py` for an example implementation.
-
+ 
 
 ## Acknowledgments
 
