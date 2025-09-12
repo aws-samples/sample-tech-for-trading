@@ -140,7 +140,7 @@ def display_best_backtests():
     st.header("🏆 Best Performing Backtests")
     
     metrics = ['annual_return', 'sharpe_ratio', 'win_rate', 'max_drawdown', 'profit_factor']
-    metric_names = ['Annual Return', 'Sharpe Ratio', 'Win Rate', 'Max Drawdown (Lower is Better)', 'Profit Factor']
+    metric_names = ['Annual Return', 'Sharpe Ratio', 'Win Rate', 'Max Drawdown', 'Profit Factor']
     
     cols = st.columns(len(metrics))
     
