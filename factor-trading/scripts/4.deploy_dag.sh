@@ -9,7 +9,7 @@ set -e  # Exit on any error
 # Configuration variables
 AWS_REGION="us-east-1"
 MWAA_ENVIRONMENT_NAME="TradingStrategiesMwaaEnvironment"
-S3_BUCKET_NAME="tradingstrategiesstack-stor-mwaadagsbuckete6ec3dd2-uhsmldzbsikh"
+S3_BUCKET_NAME="xxx" # The one created in step 3.deploy_batch_mwaa.sh
 DAG_SOURCE_DIR="src/dags/backtest_framework_example"
 REQUIREMENTS_FILE="requirements.txt"
 VERIFY_DEPLOYMENT="true"

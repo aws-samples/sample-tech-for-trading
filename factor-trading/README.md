@@ -50,6 +50,16 @@ factor-trading/
 - Cooldown periods to prevent excessive trading after exits
 - Parallel backtesting with AWS Batch for parameter optimization
 
+## Architecture
+
+![Backtest Architecture](docs/backtest-architecture.jpg)
+
+### Key Components
+
+- **Backtrader in AWS Batch**: Runs individual backtest jobs with configurable parameters and risk management
+- **ClickHouse**: Stores market data and backtest results for analysis and visualization
+- **Airflow (MWAA)**: Orchestrates parallel backtests using DAGs for parameter optimization workflows
+- **Streamlit App**: Provides interactive visualization and analysis of backtest results
 
 ## Infrastructure
 
