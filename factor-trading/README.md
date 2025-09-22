@@ -2,6 +2,31 @@
 
 This project provides a generic framework for creating and backtesting trading strategies using AWS MWAA (Managed Workflows for Apache Airflow) and AWS Batch. The framework leverages factors defined in the factor-mining project to create various trading strategies.
 
+## Architecture
+
+![Backtest Architecture](docs/backtest-architecture.jpg)
+
+### Key Components
+
+- **Backtrader in AWS Batch**: Runs individual backtest jobs with configurable parameters and risk management
+- **ClickHouse**: Stores market data and backtest results for analysis and visualization
+- **Airflow (MWAA)**: Orchestrates parallel backtests using DAGs for parameter optimization workflows
+- **Streamlit App**: Provides interactive visualization and analysis of backtest results
+
+## Features
+
+- Generic framework for implementing various trading strategies
+- Long-Short Equity strategy implementation
+- Backtesting engine using Backtrader
+- Strategy execution workflow using AWS MWAA
+- Enhanced AWS Batch environment based on [AWS Quant Research Sample](https://github.com/aws-samples/quant-research-sample-using-amazon-ecs-and-aws-batch) single node CPU implementation
+- Integration with factor-mining project for factor data
+- AWS CDK infrastructure as code for AWS resources
+- AWS Glue Data Catalog and Athena for querying backtest results
+- Risk management with take-profit and stop-loss mechanisms
+- Cooldown periods to prevent excessive trading after exits
+- Parallel backtesting with AWS Batch for parameter optimization
+
 ## Project Structure
 
 ```
@@ -35,31 +60,6 @@ factor-trading/
     ├── trading_strategies/
     └── visualization/
 ```
-
-## Features
-
-- Generic framework for implementing various trading strategies
-- Long-Short Equity strategy implementation
-- Backtesting engine using Backtrader
-- Strategy execution workflow using AWS MWAA
-- Enhanced AWS Batch environment based on [AWS Quant Research Sample](https://github.com/aws-samples/quant-research-sample-using-amazon-ecs-and-aws-batch) single node CPU implementation
-- Integration with factor-mining project for factor data
-- AWS CDK infrastructure as code for AWS resources
-- AWS Glue Data Catalog and Athena for querying backtest results
-- Risk management with take-profit and stop-loss mechanisms
-- Cooldown periods to prevent excessive trading after exits
-- Parallel backtesting with AWS Batch for parameter optimization
-
-## Architecture
-
-![Backtest Architecture](docs/backtest-architecture.jpg)
-
-### Key Components
-
-- **Backtrader in AWS Batch**: Runs individual backtest jobs with configurable parameters and risk management
-- **ClickHouse**: Stores market data and backtest results for analysis and visualization
-- **Airflow (MWAA)**: Orchestrates parallel backtests using DAGs for parameter optimization workflows
-- **Streamlit App**: Provides interactive visualization and analysis of backtest results
 
 ## Infrastructure
 
