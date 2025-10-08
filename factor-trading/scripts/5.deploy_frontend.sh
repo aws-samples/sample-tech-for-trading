@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Deploy Streamlit Visualization Dashboard
-# Usage: ./5.deploy_visualization.sh [VPC_ID] [YOUR_IP]
+# Deploy Streamlit Frontend Dashboard
+# Usage: ./5.deploy_frontend.sh [VPC_ID] [YOUR_IP]
 
 set -e
 
@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}🚀 Deploying Factor Trading Visualization Dashboard ${NC}"
+echo -e "${GREEN}🚀 Deploying Factor Trading Frontend Dashboard ${NC}"
 
 # Get script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
@@ -28,7 +28,7 @@ if [ -z "$VPC_ID" ]; then
     echo "Usage: $0 <VPC_ID> [YOUR_IP]"
     echo "Or set EXISTING_VPC_ID environment variable"
     echo ""
-    echo -e "${YELLOW}💡 The visualization stack requires an existing VPC with public subnets${NC}"
+    echo -e "${YELLOW}💡 The frontend stack requires an existing VPC with public subnets${NC}"
     echo -e "${YELLOW}   You can use the VPC created by the trading strategies stack${NC}"
     exit 1
 fi
@@ -81,15 +81,15 @@ if ! aws cloudformation describe-stacks --stack-name CDKToolkit --region $REGION
     cdk bootstrap aws://$ACCOUNT/$REGION
 fi
 
-# Deploy the visualization stack
-echo -e "${GREEN}🚀 Deploying visualization stack ...${NC}"
+# Deploy the frontend stack
+echo -e "${GREEN}🚀 Deploying frontend stack ...${NC}"
 
-# Deploy using CDK with visualization-only mode and capture outputs
-echo -e "${BLUE}📋 Running CDK deploy with visualization mode...${NC}"
-CDK_OUTPUT=$(cdk deploy FactorTradingVisualization \
+# Deploy using CDK with frontend-only mode and capture outputs
+echo -e "${BLUE}📋 Running CDK deploy with frontend mode...${NC}"
+CDK_OUTPUT=$(cdk deploy FactorTradingFrontend \
     -c existing_vpc_id=$VPC_ID \
     -c your_ip=$YOUR_IP \
-    -c deploy_mode=visualization \
+    -c deploy_mode=frontend \
     --require-approval never \
     --outputs-file cdk-outputs.json 2>&1)
 
@@ -107,7 +107,7 @@ if [ -f "cdk-outputs.json" ]; then
 import json
 with open('cdk-outputs.json', 'r') as f:
     outputs = json.load(f)
-    stack_outputs = outputs.get('FactorTradingVisualization', {})
+    stack_outputs = outputs.get('FactorTradingFrontend', {})
     print(stack_outputs.get('InstanceId', ''))
 ")
     
@@ -115,7 +115,7 @@ with open('cdk-outputs.json', 'r') as f:
 import json
 with open('cdk-outputs.json', 'r') as f:
     outputs = json.load(f)
-    stack_outputs = outputs.get('FactorTradingVisualization', {})
+    stack_outputs = outputs.get('FactorTradingFrontend', {})
     print(stack_outputs.get('StreamlitURL', ''))
 ")
     
@@ -123,7 +123,7 @@ with open('cdk-outputs.json', 'r') as f:
 import json
 with open('cdk-outputs.json', 'r') as f:
     outputs = json.load(f)
-    stack_outputs = outputs.get('FactorTradingVisualization', {})
+    stack_outputs = outputs.get('FactorTradingFrontend', {})
     print(stack_outputs.get('SSHCommand', ''))
 ")
 else
@@ -181,10 +181,10 @@ def copy_files_to_instance(instance_id, region='us-east-1'):
     project_root = sys.argv[3] if len(sys.argv) > 3 else os.getcwd()
     
     # File paths
-    app_path = os.path.join(project_root, 'src', 'visualization', 'app.py')
-    db_path = os.path.join(project_root, 'src', 'visualization', 'database.py')
-    req_path = os.path.join(project_root, 'src', 'visualization', 'requirements.txt')
-    env_path = os.path.join(project_root, 'src', 'visualization', '.env')
+    app_path = os.path.join(project_root, 'src', 'frontend', 'app.py')
+    db_path = os.path.join(project_root, 'src', 'frontend', 'database.py')
+    req_path = os.path.join(project_root, 'src', 'frontend', 'requirements.txt')
+    env_path = os.path.join(project_root, 'src', 'frontend', '.env')
     
     # Check if files exist
     for path in [app_path, db_path, req_path, env_path]:
@@ -290,7 +290,7 @@ if [ $? -eq 0 ]; then
     echo -e "${YELLOW}   Note: It may take a few minutes for the application to fully start${NC}"
     echo ""
     echo -e "${GREEN}🔑 To SSH into the instance:${NC}"
-    echo -e "${YELLOW}   1. Download the private key from AWS EC2 Console -> Key Pairs -> streamlit-visualization-key${NC}"
+    echo -e "${YELLOW}   1. Download the private key from AWS EC2 Console -> Key Pairs -> streamlit-frontend-key${NC}"
     echo -e "${YELLOW}   2. Use: $SSH_COMMAND${NC}"
     echo ""
     echo -e "${GREEN}📝 To check the Streamlit service status:${NC}"
@@ -307,7 +307,7 @@ if [ $? -eq 0 ]; then
     echo ""
     echo -e "${BLUE}💡 Deployment Info:${NC}"
     echo -e "${YELLOW}   • Used cdk/app.py${NC}"
-    echo -e "${YELLOW}   • Deployed only visualization stack (deploy_mode=visualization)${NC}"
+    echo -e "${YELLOW}   • Deployed only frontend stack (deploy_mode=frontend)${NC}"
     echo -e "${YELLOW}   • VPC ID: $VPC_ID${NC}"
     echo -e "${YELLOW}   • Your IP: $YOUR_IP${NC}"
     

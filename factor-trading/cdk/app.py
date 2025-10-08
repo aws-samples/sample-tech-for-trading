@@ -4,7 +4,7 @@ import os
 import sys
 from aws_cdk import App, Environment
 from trading_strategies.trading_strategies_stack import TradingStrategiesStack
-from visualization_stack import VisualizationStack
+from frontend_stack import FrontendStack
 
 app = App()
 
@@ -23,13 +23,13 @@ container_image_uri = (
     os.environ.get("CONTAINER_IMAGE_URI")
 )
 
-# Get visualization parameters
+# Get frontend parameters
 your_ip = app.node.try_get_context('your_ip') or os.environ.get('YOUR_IP')
 
-# Get deployment mode - can be 'all', 'trading', or 'visualization'
+# Get deployment mode - can be 'all', 'trading', or 'frontend'
 deploy_mode = app.node.try_get_context('deploy_mode') or os.environ.get('DEPLOY_MODE', 'all')
 
-# Create the main trading strategies stack (unless mode is 'visualization' only)
+# Create the main trading strategies stack (unless mode is 'frontend' only)
 if deploy_mode in ['all', 'trading']:
     trading_strategies_stack = TradingStrategiesStack(
         app, 
@@ -39,17 +39,17 @@ if deploy_mode in ['all', 'trading']:
         env=env
     )
 
-# Create the visualization stack if VPC ID is provided (unless mode is 'trading' only)
-if deploy_mode in ['all', 'visualization'] and existing_vpc_id:
-    visualization_stack = VisualizationStack(
-        app, "FactorTradingVisualization",
+# Create the frontend stack if VPC ID is provided (unless mode is 'trading' only)
+if deploy_mode in ['all', 'frontend'] and existing_vpc_id:
+    frontend_stack = FrontendStack(
+        app, "FactorTradingFrontend",
         vpc_id=existing_vpc_id,
         your_ip=your_ip,
         env=env,
-        description="Factor Trading Streamlit Visualization Dashboard"
+        description="Factor Trading Unified Frontend Dashboard"
     )
-elif deploy_mode in ['all', 'visualization'] and not existing_vpc_id:
-    print("Note: Visualization stack not created. To deploy visualization, provide existing_vpc_id:")
+elif deploy_mode in ['all', 'frontend'] and not existing_vpc_id:
+    print("Note: Frontend stack not created. To deploy frontend, provide existing_vpc_id:")
     print("  cdk deploy -c existing_vpc_id=vpc-xxxxxxxxx")
 
 app.synth()

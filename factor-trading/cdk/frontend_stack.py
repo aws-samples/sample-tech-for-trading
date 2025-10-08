@@ -13,7 +13,7 @@ from aws_cdk import (
 from constructs import Construct
 import os
 
-class VisualizationStack(Stack):
+class FrontendStack(Stack):
     def __init__(
         self, 
         scope: Construct, 
@@ -45,7 +45,7 @@ class VisualizationStack(Stack):
         streamlit_sg = ec2.SecurityGroup(
             self, "StreamlitSecurityGroup",
             vpc=vpc,
-            description="Security group for Streamlit visualization server",
+            description="Security group for Streamlit frontend server",
             allow_all_outbound=True
         )
 
@@ -59,8 +59,8 @@ class VisualizationStack(Stack):
         # Allow Streamlit access from your IP
         streamlit_sg.add_ingress_rule(
             peer=ec2.Peer.ipv4(f"{your_ip}/32"),
-            connection=ec2.Port.tcp(8501),
-            description="Streamlit access from your IP"
+            connection=ec2.Port.tcp(8502),
+            description="Streamlit frontend access from your IP"
         )
 
         # Create IAM role for EC2 instance
@@ -77,7 +77,7 @@ class VisualizationStack(Stack):
         # Create key pair for SSH access
         key_pair = ec2.KeyPair(
             self, "StreamlitKeyPair",
-            key_pair_name="streamlit-visualization-key",
+            key_pair_name="streamlit-frontend-key",
             type=ec2.KeyPairType.RSA,
             format=ec2.KeyPairFormat.PEM
         )
@@ -118,7 +118,7 @@ class VisualizationStack(Stack):
             # Create systemd service for Streamlit
             "cat > /etc/systemd/system/streamlit.service << 'EOF'",
             "[Unit]",
-            "Description=Streamlit Factor Trading Dashboard",
+            "Description=Streamlit Factor Trading Frontend Dashboard",
             "After=network.target",
             "",
             "[Service]",
@@ -126,7 +126,7 @@ class VisualizationStack(Stack):
             "User=ec2-user",
             "WorkingDirectory=/opt/streamlit-app",
             "Environment=PATH=/usr/bin:/usr/local/bin",
-            "ExecStart=/usr/bin/python3.11 -m streamlit run app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true",
+            "ExecStart=/usr/bin/python3.11 -m streamlit run app.py --server.port 8502 --server.address 0.0.0.0 --server.headless true",
             "Restart=always",
             "RestartSec=10",
             "",
@@ -170,8 +170,8 @@ class VisualizationStack(Stack):
         # Outputs
         CfnOutput(
             self, "StreamlitURL",
-            value=f"http://{instance.instance_public_ip}:8501",
-            description="Streamlit Dashboard URL"
+            value=f"http://{instance.instance_public_ip}:8502",
+            description="Streamlit Frontend Dashboard URL"
         )
 
         CfnOutput(
@@ -182,7 +182,7 @@ class VisualizationStack(Stack):
 
         CfnOutput(
             self, "SSHCommand",
-            value=f"ssh -i streamlit-visualization-key.pem ec2-user@{instance.instance_public_ip}",
+            value=f"ssh -i streamlit-frontend-key.pem ec2-user@{instance.instance_public_ip}",
             description="SSH command to connect to the instance"
         )
 

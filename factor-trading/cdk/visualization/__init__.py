@@ -1,1 +1,0 @@
-# Visualization CDK stack
