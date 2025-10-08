@@ -13,7 +13,7 @@ factor-trading/
 ├── local_backtest.py
 ├── src/
 │   ├── trading_strategies_model/
-│   ├── visualization/
+│   ├── frontend/
 │   ├── dags/
 │   ├── data_prepare/
 │   └── batch_jobs/
@@ -22,7 +22,7 @@ factor-trading/
 │   ├── 2.build_and_push_ecr.sh
 │   ├── 3.deploy_batch_mwaa.sh
 │   ├── 4.deploy_dag.sh
-│   └── 5.deploy_visualization.sh
+│   └── 5.deploy_frontend.sh
 ├── docker/
 │   ├── Dockerfile
 │   ├── requirements.txt
@@ -31,9 +31,9 @@ factor-trading/
     ├── app.py
     ├── cdk.json
     ├── requirements.txt
-    ├── visualization_stack.py
+    ├── frontend_stack.py
     ├── trading_strategies/
-    └── visualization/
+    └── frontend/
 ```
 
 ## Features
@@ -241,26 +241,27 @@ After successful deployment, configure these Airflow Variables in the MWAA UI:
 
 The script provides verification, displays the MWAA web UI URL, and guides you through the complete setup process for running backtest workflows.
 
-### Step 5: Deploy Visualization Dashboard
+### Step 5: Deploy Frontend Dashboard
 
-Deploy an interactive Streamlit dashboard to analyze your backtest results:
+Deploy an interactive Streamlit dashboard to manage backtests and analyze results:
 
 ```bash
 # Automated deployment with existing VPC, such as vpc-0dae208a35ee2453f
-./scripts/5.deploy_visualization.sh vpc-0dae208a35ee2453f
+./scripts/5.deploy_frontend.sh vpc-0dae208a35ee2453f
 
 # And with an IP to whitelist the access to the dashboard
-./scripts/5.deploy_visualization.sh vpc-xxxxxxxxx 1.2.3.4
+./scripts/5.deploy_frontend.sh vpc-xxxxxxxxx 1.2.3.4
 
 # Manual CDK deployment
-cd cdk/visualization
+cd cdk
 python3 -m venv venv && source venv/bin/activate
 pip install -r ../requirements.txt
 cdk deploy -c existing_vpc_id=vpc-xxxxxxxxx -c your_ip=1.2.3.4
 ```
 
 **What you get:**
-- Interactive web dashboard at `http://INSTANCE_IP:8501`
+- Interactive web dashboard at `http://INSTANCE_IP:8502`
+- Unified frontend for backtest management and results visualization
 - Performance analysis with charts and metrics
 - Best performers identification across strategies
 - Detailed backtest, orders, and trades analysis
