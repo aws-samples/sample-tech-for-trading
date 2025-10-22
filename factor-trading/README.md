@@ -61,7 +61,7 @@ The project uses the following AWS services:
 
 ### Architecture Overview
 
-![Backtest Architecture](docs/backtest-architecture.jpg)
+![Backtest Architecture](docs/backtest-architecture.png)
 
 ### 📋 **Prerequisites**
 
