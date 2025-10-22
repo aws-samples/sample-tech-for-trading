@@ -59,6 +59,10 @@ The project uses the following AWS services:
 - Amazon S3 for backtesting result storage
 - Amazon ClickHouse for data storage and analysis
 
+### Architecture Overview
+
+![Backtest Architecture](docs/backtest-architecture.jpg)
+
 ### 📋 **Prerequisites**
 
 - AWS CLI configured with appropriate permissions
