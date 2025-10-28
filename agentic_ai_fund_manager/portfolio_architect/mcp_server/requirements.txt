@@ -1,0 +1,11 @@
+# requirements.txt
+# MCP Server Dependencies
+
+# MCP Protocol Library
+mcp
+
+# ETF Data Retrieval
+yfinance
+
+# Monte Carlo Simulation
+numpy

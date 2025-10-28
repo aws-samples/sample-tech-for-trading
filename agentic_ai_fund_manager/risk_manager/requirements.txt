@@ -1,0 +1,8 @@
+# requirements.txt
+# Risk Manager Dependencies
+
+# AI Agent Framework
+strands-agents
+
+# AWS Bedrock AgentCore
+bedrock-agentcore

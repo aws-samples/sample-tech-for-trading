@@ -1,0 +1,14 @@
+# requirements.txt
+# Fund Manager Dependencies
+
+# LangGraph
+langgraph
+
+# AI Agent Framework
+strands-agents
+
+# AWS Bedrock AgentCore
+bedrock-agentcore
+
+# AWS SDK
+boto3

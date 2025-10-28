@@ -1,0 +1,23 @@
+# Core AI/Agent Framework
+strands-agents
+strands-agents-tools
+bedrock-agentcore-starter-toolkit
+langgraph
+
+# MCP (Model Context Protocol)
+mcp
+
+# Data & Finance
+yfinance
+pandas
+numpy
+
+# Web Framework
+streamlit
+plotly
+
+# AWS
+boto3
+
+# HTTP Requests
+requests

@@ -1,0 +1,8 @@
+# requirements.txt
+# Portfolio Architect Dependencies
+
+# AI Agent Framework
+strands-agents
+
+# AWS Bedrock AgentCore
+bedrock-agentcore
