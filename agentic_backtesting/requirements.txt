@@ -9,3 +9,4 @@ plotly>=5.0.0
 psycopg2-binary>=2.9.0
 strands-agents
 strands-agents-tools
+boto3>=1.34.0

@@ -9,48 +9,36 @@ from agents.strategy_generator import StrategyGeneratorAgent
 from agents.market_data import MarketDataAgent
 from agents.backtest import BacktestAgent
 from agents.results_summary import ResultsSummaryAgent
+from mcp import RedshiftMCPClient
 
 # Define the orchestrator system prompt for automatic pipeline execution
 MAIN_SYSTEM_PROMPT = """
 You are a quant researcher that automatically executes complete trading strategy backtesting.
 
 For any trading strategy request, ALWAYS execute this full pipeline:
-1. Use strategy_generator to create the strategy
-2. Use market_data to fetch required data - WAIT AT LEAST 30 SECONDS after calling market_data before proceeding to next step
+1. Use market_data to fetch required data - WAIT AT LEAST 30 SECONDS after calling market_data before proceeding to next step
+2. Use strategy_generator to create the strategy with the market_data as data feed - WAIT AT LEAST 30 SECONDS after each step
 3. CHECK if market data is successfully fetched
-4. ONLY if market data exists, use backtest to test the strategy
-5. Use results_summary to analyze and present final results
+4. ONLY if market data exists, use backtest to test the strategy - WAIT AT LEAST 10 SECONDS
+5. Use results_summary to analyze and present final results - WAIT AT LEAST 10 SECONDS
 
 IMPORTANT: 
-- Market data fetching takes time - always wait at least 30 seconds after calling market_data
+- Each step takes at least 10 seconds to complete - always wait between steps
+- Strategy generation and Market data fetching takes time - always wait at least 30 seconds after calling the agent 
 - If market_data returns None or empty, DO NOT proceed with backtest. Inform user that market data fetch failed.
 
 Execute all steps automatically and provide the final summary to the user.
 """
 
 # Initialize agent instances after .env is loaded
+mcp_client = RedshiftMCPClient()
 strategy_agent = StrategyGeneratorAgent()
-market_data_agent = MarketDataAgent()
+market_data_agent = MarketDataAgent(mcp_client=mcp_client)
 backtest_agent = BacktestAgent()
 results_agent = ResultsSummaryAgent()
 
 # Global storage for market data
 _stored_market_data = {}
-
-@tool
-def strategy_generator(query: str):
-    """Generate trading strategies and algorithms"""
-    print("\n" + "="*50)
-    print("🔧 STRATEGY GENERATOR AGENT")
-    print("="*50)
-    print(f"📥 INPUT: {query}")
-    print("🧠 REASONING: Converting user trading idea into executable strategy code...")
-    
-    result = strategy_agent.process(query)
-    
-    print(f"📤 OUTPUT: {result}")
-    print("="*50)
-    return result
 
 @tool
 def market_data(symbols: str, period: str = "1y"):
@@ -83,6 +71,23 @@ def market_data(symbols: str, period: str = "1y"):
     print(f"✅ Successfully fetched market data for: {list(result.keys())}")
     return f"Market data fetched for {list(result.keys())} - {sum(len(df) for df in result.values())} total rows"
 
+
+@tool
+def strategy_generator(query: str):
+    """Generate trading strategies and algorithms"""
+    global _stored_market_data
+
+    print("\n" + "="*50)
+    print("🔧 STRATEGY GENERATOR AGENT")
+    print("="*50)
+    print(f"📥 INPUT: {query}")
+    print("🧠 REASONING: Converting user trading idea into executable strategy code...")
+    
+    result = strategy_agent.process(query)
+    
+    print(f"📤 OUTPUT: {result}")
+    print("="*50)
+    return result
 
 @tool
 def backtest(strategy_code: str, market_data_info: str = None, params: dict = None):
@@ -145,7 +150,7 @@ class OrchestratorAgent:
         self.orchestrator = Agent(
             system_prompt=MAIN_SYSTEM_PROMPT,
             callback_handler=None,
-            tools=[strategy_generator, market_data, backtest, results_summary]
+            tools=[market_data, strategy_generator, backtest, results_summary]
         )
     
     def process(self, user_input: str):

@@ -1,133 +1,170 @@
 """
-Strategy Generator Agent - Converts trading ideas to executable strategies
+Strategy Generator Agent - Converts JSON strategy config to executable Backtrader code
 """
 
 from .base_agent import BaseAgent
-from typing import Dict, Any
+import json
+from typing import Dict, Any, Union
 
 class StrategyGeneratorAgent(BaseAgent):
-    """Agent that generates trading strategy code from natural language descriptions"""
+    """Agent that generates Backtrader strategy code from JSON configuration"""
     
     def __init__(self):
-        super().__init__("StrategyGenerator")
-        self.strategy_templates = {
-            'rsi': self._rsi_template,
-            'momentum': self._momentum_template,
-            'mean_reversion': self._mean_reversion_template
-        }
-    
-    def generate_strategy(self, trading_idea: str) -> str:
-        """Generate strategy code from trading idea"""
-        # Simple keyword-based strategy selection
-        idea_lower = trading_idea.lower()
+        instructions = """You are a trading strategy code generator. Convert JSON strategy configurations into executable Backtrader Python code.
+
+Generate clean, efficient Backtrader strategy code that:
+1. Implements all buy and sell conditions from the JSON
+2. Uses proper Backtrader indicators (EMA, SMA, RSI, ROC)
+3. Handles stop loss and take profit if specified
+4. Supports multiple conditions with proper logic (ALL buy conditions must be true, ANY sell condition can trigger)
+5. Includes proper error handling and parameter validation
+
+Always return complete, runnable Python code with proper imports and class structure."""
         
-        if 'rsi' in idea_lower:
-            return self._rsi_template(trading_idea)
-        elif 'momentum' in idea_lower:
-            return self._momentum_template(trading_idea)
-        elif 'mean reversion' in idea_lower or 'revert' in idea_lower:
-            return self._mean_reversion_template(trading_idea)
+        super().__init__("StrategyGenerator", instructions)
+    
+
+    def process(self, input_data: Union[str, Dict]) -> str:
+        """Convert query and market data to Backtrader code"""
+        if isinstance(input_data, str):
+            strategy_config = json.loads(input_data)
+            prompt = self._create_strategy_prompt(strategy_config)
         else:
-            return self._default_template(trading_idea)
+            prompt = self._create_strategy_prompt(input_data)
+            
+        print(f"FULL prompt: {prompt}")
+        return self.invoke_sync(prompt)
     
-    def process(self, input_data: Any) -> Any:
-        """Process trading idea and return strategy code"""
-        return self.generate_strategy(input_data)
-    
-    def _rsi_template(self, idea: str) -> str:
-        """Generate RSI-based strategy"""
-        return '''
+    def _create_strategy_prompt(self, config: Dict[str, Any]) -> str:
+        """Create detailed prompt for strategy generation """
+        
+        database_config = config.get('database', {})
+        backtest_window = config.get('backtest_window', '1Y')
+        
+        return f"""
+Generate a complete Backtrader strategy class from this JSON configuration:
+
+{json.dumps(config, indent=2)}
+
+Requirements:
+1. Class name: {config['name'].replace(' ', '')}Strategy
+2. Stock symbol: {config['stock_symbol']}
+3. Max positions: {config['max_positions']}
+4. Stop loss: {config.get('stop_loss', 'None')}% if specified
+5. Take profit: {config.get('take_profit', 'None')}% if specified
+6. Database: {database_config.get('PGHOST', 'N/A')}
+7. Backtest Window: {backtest_window}
+
+Buy Conditions (ALL must be true):
+{self._format_conditions(config['buy_conditions'])}
+
+Sell Conditions (ANY can trigger):
+{self._format_conditions(config['sell_conditions'])}
+
+Example RSI strategy code:
+```python
 import backtrader as bt
 import backtrader.indicators as btind
+import backtrader.analyzers as btanalyzers
+
+class RedshiftDataFeed(bt.feeds.PandasData):
+    \"\"\"Custom data feed from Redshift\"\"\"
+    
+    @staticmethod
+    def fetch_data_from_redshift(symbol, backtest_window='{backtest_window}'):
+        # Database connection
+        conn = psycopg2.connect(
+            host='{database_config.get('PGHOST', '')}',
+            port={database_config.get('PGPORT', 5439)},
+            database='{database_config.get('PGDATABASE', '')}',
+            user='{database_config.get('PGUSER', '')}',
+            password='{database_config.get('PGPASSWORD', '')}'
+        )
+        
+        # Calculate date range based on backtest window
+        end_date = datetime.now()
+        if backtest_window == '1Y':
+            start_date = end_date - timedelta(days=365)
+        elif backtest_window == '6M':
+            start_date = end_date - timedelta(days=180)
+        else:
+            start_date = end_date - timedelta(days=365)  # default 1Y
+            
+        query = f\"\"\"
+        SELECT timestamp as 'date', open, high, low, close, volume
+        FROM stock_prices 
+        WHERE symbol = %s 
+        AND date >= %s AND date <= %s
+        ORDER BY date
+        \"\"\"
+        
+        df = pd.read_sql(query, conn, params=[symbol, start_date, end_date])
+        conn.close()
+        
+        df['date'] = pd.to_datetime(df['date'])
+        df.set_index('date', inplace=True)
+        return df
 
 class RSIStrategy(bt.Strategy):
     params = (
-        ('rsi_period', 14),
-        ('rsi_upper', 70),
-        ('rsi_lower', 30),
+        ('stop_loss', 5.0),  # 5% stop loss
+        ('take_profit', 10.0),  # 10% take profit
     )
     
     def __init__(self):
-        self.rsi = btind.RSI(self.data.close, period=self.params.rsi_period)
+        self.rsi = btind.RSI(self.data.close, period=14)
+        self.buy_price = None
         
     def next(self):
         if not self.position:
-            if self.rsi < self.params.rsi_lower:
+            if self.rsi < 30:  # Buy when RSI < 30
                 self.buy()
+                self.buy_price = self.data.close[0]
         else:
-            if self.rsi > self.params.rsi_upper:
+            # Stop loss and take profit
+            if self.buy_price:
+                pct_change = (self.data.close[0] - self.buy_price) / self.buy_price * 100
+                if pct_change <= -self.params.stop_loss or pct_change >= self.params.take_profit:
+                    self.sell()
+                    self.buy_price = None
+            # RSI sell signal
+            if self.rsi > 70:  # Sell when RSI > 70
                 self.sell()
-'''
-    
-    def _momentum_template(self, idea: str) -> str:
-        """Generate momentum-based strategy"""
-        return '''
-import backtrader as bt
-import backtrader.indicators as btind
+                self.buy_price = None
 
-class MomentumStrategy(bt.Strategy):
-    params = (
-        ('period', 20),
-        ('momentum_threshold', 0.02),
-    )
-    
-    def __init__(self):
-        self.momentum = btind.Momentum(self.data.close, period=self.params.period)
-        
-    def next(self):
-        if not self.position:
-            if self.momentum[0] > self.params.momentum_threshold:
-                self.buy()
-        else:
-            if self.momentum[0] < -self.params.momentum_threshold:
-                self.sell()
-'''
-    
-    def _mean_reversion_template(self, idea: str) -> str:
-        """Generate mean reversion strategy"""
-        return '''
-import backtrader as bt
-import backtrader.indicators as btind
+# Setup cerebro with custom data feed
+cerebro = bt.Cerebro()
+symbol = 'AMZN'
+df = RedshiftDataFeed.fetch_data_from_redshift(symbol, '{backtest_window}')
+data = RedshiftDataFeed(dataname=df)
+cerebro.adddata(data)
+cerebro.addstrategy(RSIStrategy)
+cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpe')
+cerebro.addanalyzer(btanalyzers.DrawDown, _name='drawdown')
+cerebro.addanalyzer(btanalyzers.Returns, _name='returns')
+cerebro.broker.setcash(100000.0)
+results = cerebro.run()
+```
 
-class MeanReversionStrategy(bt.Strategy):
-    params = (
-        ('period', 20),
-        ('devfactor', 2.0),
-    )
-    
-    def __init__(self):
-        self.boll = btind.BollingerBands(self.data.close, 
-                                       period=self.params.period,
-                                       devfactor=self.params.devfactor)
-        
-    def next(self):
-        if not self.position:
-            if self.data.close < self.boll.lines.bot:
-                self.buy()
-        else:
-            if self.data.close > self.boll.lines.top:
-                self.sell()
-'''
-    
-    def _default_template(self, idea: str) -> str:
-        """Generate default simple strategy"""
-        return '''
-import backtrader as bt
-import backtrader.indicators as btind
+Generate complete Python code with:
+- Proper imports (backtrader, indicators)
+- Strategy class with __init__ and next methods
+- All required indicators initialized
+- Buy logic: ALL conditions must be true
+- Sell logic: ANY condition can trigger
+- Stop loss/take profit implementation if specified
+- Proper position management
 
-class SimpleStrategy(bt.Strategy):
-    params = (
-        ('ma_period', 20),
-    )
+Return only the Python code with redshift custom feed, no explanations.
+"""
     
-    def __init__(self):
-        self.ma = btind.SimpleMovingAverage(self.data.close, period=self.params.ma_period)
-        
-    def next(self):
-        if not self.position:
-            if self.data.close > self.ma:
-                self.buy()
-        else:
-            if self.data.close < self.ma:
-                self.sell()
-'''
+    def _format_conditions(self, conditions: list) -> str:
+        """Format conditions for the prompt"""
+        formatted = []
+        for i, condition in enumerate(conditions, 1):
+            if condition['compare_type'] == 'value':
+                formatted.append(f"{i}. {condition['indicator']}({condition.get('param', 'N/A')}) {condition['operator']} {condition['compare_value']}")
+            else:
+                formatted.append(f"{i}. {condition['indicator']}({condition.get('param', 'N/A')}) {condition['operator']} {condition['compare_indicator']}({condition.get('compare_param', 'N/A')})")
+        return '\n'.join(formatted)
+    

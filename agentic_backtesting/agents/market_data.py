@@ -1,109 +1,115 @@
 """
-Market Data Agent - Fetches and processes market data from Redshift
+Market Data Agent - Fetches and processes market data from Redshift using MCP
 """
 
 import pandas as pd
-import os
 from datetime import datetime, timedelta
-import psycopg2
 from .base_agent import BaseAgent
 from typing import Dict, Any, List
+import boto3
+import json
 
 class MarketDataAgent(BaseAgent):
-    """Agent that handles market data fetching from Redshift"""
+    """Agent that handles market data fetching from Redshift via MCP"""
     
-    def __init__(self):
+    def __init__(self, mcp_client=None):
         super().__init__("MarketData")
-        self.connection = self._init_redshift_connection()
-        self.cache = {}
+        self.mcp_client = mcp_client
+        self.bedrock_client = boto3.client('bedrock-runtime')
+        self.schema_prompt = """
+        Database Schema:
+        Table: daily_data
+        Columns:
+        - symbol (varchar): Stock symbol (e.g., 'AMZN', 'AAPL')
+        - timestamp (date): Trading date
+        - open (decimal): Opening price
+        - high (decimal): Highest price
+        - low (decimal): Lowest price  
+        - close (decimal): Closing price
+        - volume (bigint): Trading volume
+        """
     
-    def _init_redshift_connection(self):
-        """Initialize Redshift connection from environment variables"""
+    def _generate_sql_query(self, symbols: List[str], start_date, end_date) -> str:
+        """Generate SQL query using Bedrock OpenAI GPT-OSS-120B"""
+        prompt = f"""
+        {self.schema_prompt}
+        
+        Generate a SQL query to:
+        - Select timestamp as Date, open as Open, high as High, low as Low, close as Close, volume as Volume
+        - From daily_data table
+        - Filter by symbols: {symbols}
+        - Date range: {start_date} to {end_date}
+        - Order by timestamp ascending
+        
+        Return only the SQL query without explanation.
+        """
+        
         try:
-            connection = psycopg2.connect(
-                host=os.getenv('PGHOST', 'localhost'),
-                port=int(os.getenv('PGPORT', 5439)),
-                user=os.getenv('PGUSER', 'admin'),
-                password=os.getenv('PGPASSWORD', ''),
-                database=os.getenv('PGDATABASE', 'trading')
-            )
-            print(f"✅ Redshift connection successful")
-            return connection
+            sql = self.invoke_sync(prompt)
+            return sql
+            
         except Exception as e:
-            print(f"❌ Redshift connection failed: {e}")
-            return None
+            print(f"❌ Error generating SQL with Bedrock: {e}")
+            # Fallback to hardcoded query
+            symbols_str = "', '".join(symbols)
+            return f"""
+            SELECT 
+                timestamp as "Date",
+                open as "Open", 
+                high as "High",
+                low as "Low",
+                close as "Close",
+                volume as "Volume"
+            FROM daily_data
+            WHERE symbol IN ('{symbols_str}')
+            AND timestamp >= '{start_date}'
+            AND timestamp <= '{end_date}'
+            ORDER BY timestamp
+            """
     
     def get_data(self, symbols: List[str] = None, period: str = '2y') -> Dict[str, pd.DataFrame]:
-        """Fetch market data from Redshift"""
-        print(f"🔍 get_data called with symbols: {symbols}, period: {period}")
-        
-        if self.connection is None:
-            print("❌ No Redshift connection, using fallback")
-
+        """Fetch market data using MCP Redshift server"""
         if symbols is None:
             symbols = ['AMZN']
         
-        print(f"📅 Calculating date range for period: {period}")
         # Calculate date range
         end_date = datetime.now().date()
-        if period == '1y':
-            start_date = end_date - timedelta(days=365)
-        elif period == '2y':
-            start_date = end_date - timedelta(days=730)
-        elif period == '5y':
-            start_date = end_date - timedelta(days=1825)
-        elif period == '3y':
-            start_date = end_date - timedelta(days=1095)
-        else:
-            start_date = end_date - timedelta(days=730)  # Default 2y
+        days_map = {'1y': 365, '2y': 730, '3y': 1095, '5y': 1825}
+        start_date = end_date - timedelta(days=days_map.get(period, 730))
         
-        print(f"📊 Date range: {start_date} to {end_date}")
+        # Generate SQL query
+        query = self._generate_sql_query(symbols, start_date, end_date)
+        print(f"USE query: {query}")
         
-        data = {}
-        for symbol in symbols:
-            print(f"🔄 Processing symbol: {symbol}")
-            try:
-                df = self._fetch_symbol_data(symbol, start_date, end_date)
-                if not df.empty:
-                    data[symbol] = df
-                    print(f"✅ Successfully fetched data for {symbol}")
-                else:
-                    print(f"⚠️ No data returned for {symbol}")
-            except Exception as e:
-                print(f"❌ Error fetching data for {symbol}: {e}")
+        try:
+            # Execute query via MCP
+            if self.mcp_client:
+                result = self.mcp_client.call_tool("execute_query", {"query": query})
+                df = pd.DataFrame(result.get('data', []))
+            else:
+                # Fallback for testing
+                df = pd.DataFrame()
+            
+            if not df.empty:
+                df['Date'] = pd.to_datetime(df['Date'])
+                df.set_index('Date', inplace=True)
+                
+                # Split by symbol
+                data = {}
+                for symbol in symbols:
+                    symbol_data = df[df.index.isin(df.index)]  # Placeholder logic
+                    if not symbol_data.empty:
+                        data[symbol] = symbol_data
+                
+                return data
+            
+        except Exception as e:
+            print(f"❌ Error fetching data: {e}")
         
-        print(f"📋 Final data keys: {list(data.keys())}")
-        return data
-    
-    def _fetch_symbol_data(self, symbol: str, start_date, end_date) -> pd.DataFrame:
-        """Fetch data for a single symbol from Redshift"""
-        query = """
-        SELECT 
-            "timestamp" as "Date",
-            "open" as "Open",
-            "high" as "High",
-            "low" as "Low",
-            "close" as "Close",
-            "volume" as "Volume"
-        FROM daily_data
-        WHERE symbol = %s
-        AND timestamp >= %s
-        AND timestamp <= %s
-        ORDER BY timestamp
-        """
-        
-        df = pd.read_sql_query(query, self.connection, params=[symbol, start_date, end_date])
-        if not df.empty and 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'])
-            df.set_index('Date', inplace=True)
-        
-        print(f"📊 Fetched {len(df)} rows of market data for {symbol}")
-        return df
+        return {}
     
     def process(self, input_data: Any) -> Any:
         """Process data request and return market data"""
-        print(f"🎯 MarketDataAgent.process called with: {input_data}")
-        
         if isinstance(input_data, dict):
             symbols = input_data.get('symbols', ['AMZN'])
             period = input_data.get('period', '2y')
@@ -111,7 +117,4 @@ class MarketDataAgent(BaseAgent):
             symbols = ['AMZN']
             period = '2y'
         
-        print(f"🔧 Processed params - symbols: {symbols}, period: {period}")
-        result = self.get_data(symbols, period)
-        print(f"📤 Returning result with keys: {list(result.keys()) if result else 'None'}")
-        return result
+        return self.get_data(symbols, period)
