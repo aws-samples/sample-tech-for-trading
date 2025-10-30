@@ -15,7 +15,6 @@ class MarketDataAgent(BaseAgent):
     def __init__(self, mcp_client=None):
         super().__init__("MarketData")
         self.mcp_client = mcp_client
-        self.bedrock_client = boto3.client('bedrock-runtime')
         self.schema_prompt = """
         Database Schema:
         Table: daily_data
@@ -40,6 +39,8 @@ class MarketDataAgent(BaseAgent):
         - Filter by symbols: {symbols}
         - Date range: {start_date} to {end_date}
         - Order by timestamp ascending
+
+        because Open High Low Close Volume Date are keywords, please use double quotatation to include them, such as open as "Open"
         
         Return only the SQL query without explanation.
         """
@@ -91,8 +92,8 @@ class MarketDataAgent(BaseAgent):
                 df = pd.DataFrame()
             
             if not df.empty:
-                df['Date'] = pd.to_datetime(df['Date'])
-                df.set_index('Date', inplace=True)
+                df['date'] = pd.to_datetime(df['date'])
+                df.set_index('date', inplace=True)
                 
                 # Split by symbol
                 data = {}

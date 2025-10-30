@@ -17,14 +17,14 @@ You are a quant researcher that automatically executes complete trading strategy
 
 For any trading strategy request, ALWAYS execute this full pipeline:
 1. Use market_data to fetch required data - WAIT AT LEAST 30 SECONDS after calling market_data before proceeding to next step
-2. Use strategy_generator to create the strategy with the market_data as data feed - WAIT AT LEAST 30 SECONDS after each step
+2. Use strategy_generator to create the strategy with the market_data as data feed - WAIT AT LEAST 60 SECONDS after each step
 3. CHECK if market data is successfully fetched
 4. ONLY if market data exists, use backtest to test the strategy - WAIT AT LEAST 10 SECONDS
 5. Use results_summary to analyze and present final results - WAIT AT LEAST 10 SECONDS
 
 IMPORTANT: 
 - Each step takes at least 10 seconds to complete - always wait between steps
-- Strategy generation and Market data fetching takes time - always wait at least 30 seconds after calling the agent 
+- Strategy generation and Market data fetching takes time - always wait at least 60 seconds after calling the agent 
 - If market_data returns None or empty, DO NOT proceed with backtest. Inform user that market data fetch failed.
 
 Execute all steps automatically and provide the final summary to the user.
@@ -39,6 +39,7 @@ results_agent = ResultsSummaryAgent()
 
 # Global storage for market data
 _stored_market_data = {}
+_strategy_call_count = 0
 
 @tool
 def market_data(symbols: str, period: str = "1y"):
@@ -75,9 +76,10 @@ def market_data(symbols: str, period: str = "1y"):
 @tool
 def strategy_generator(query: str):
     """Generate trading strategies and algorithms"""
-    global _stored_market_data
-
-    print("\n" + "="*50)
+    
+    _strategy_call_count += 1
+    print(f"\n🔄 STRATEGY GENERATOR CALL #{_strategy_call_count}")
+    print("="*50)
     print("🔧 STRATEGY GENERATOR AGENT")
     print("="*50)
     print(f"📥 INPUT: {query}")

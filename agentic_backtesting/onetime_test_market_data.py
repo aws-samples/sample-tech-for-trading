@@ -2,13 +2,15 @@
 """
 One-time test for Market Data Agent
 """
-
+from dotenv import load_dotenv
 from agents.market_data import MarketDataAgent
 from mcp import RedshiftMCPClient
 
 def test_market_data():
     print("🧪 Testing Market Data Agent")
     print("=" * 50)
+    
+    load_dotenv()
     
     try:
         # Initialize MCP client and agent
@@ -52,4 +54,5 @@ def test_market_data():
         traceback.print_exc()
 
 if __name__ == "__main__":
+    
     test_market_data()

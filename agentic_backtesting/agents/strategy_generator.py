@@ -52,8 +52,7 @@ Requirements:
 3. Max positions: {config['max_positions']}
 4. Stop loss: {config.get('stop_loss', 'None')}% if specified
 5. Take profit: {config.get('take_profit', 'None')}% if specified
-6. Database: {database_config.get('PGHOST', 'N/A')}
-7. Backtest Window: {backtest_window}
+
 
 Buy Conditions (ALL must be true):
 {self._format_conditions(config['buy_conditions'])}
@@ -66,44 +65,6 @@ Example RSI strategy code:
 import backtrader as bt
 import backtrader.indicators as btind
 import backtrader.analyzers as btanalyzers
-
-class RedshiftDataFeed(bt.feeds.PandasData):
-    \"\"\"Custom data feed from Redshift\"\"\"
-    
-    @staticmethod
-    def fetch_data_from_redshift(symbol, backtest_window='{backtest_window}'):
-        # Database connection
-        conn = psycopg2.connect(
-            host='{database_config.get('PGHOST', '')}',
-            port={database_config.get('PGPORT', 5439)},
-            database='{database_config.get('PGDATABASE', '')}',
-            user='{database_config.get('PGUSER', '')}',
-            password='{database_config.get('PGPASSWORD', '')}'
-        )
-        
-        # Calculate date range based on backtest window
-        end_date = datetime.now()
-        if backtest_window == '1Y':
-            start_date = end_date - timedelta(days=365)
-        elif backtest_window == '6M':
-            start_date = end_date - timedelta(days=180)
-        else:
-            start_date = end_date - timedelta(days=365)  # default 1Y
-            
-        query = f\"\"\"
-        SELECT timestamp as 'date', open, high, low, close, volume
-        FROM stock_prices 
-        WHERE symbol = %s 
-        AND date >= %s AND date <= %s
-        ORDER BY date
-        \"\"\"
-        
-        df = pd.read_sql(query, conn, params=[symbol, start_date, end_date])
-        conn.close()
-        
-        df['date'] = pd.to_datetime(df['date'])
-        df.set_index('date', inplace=True)
-        return df
 
 class RSIStrategy(bt.Strategy):
     params = (
@@ -132,18 +93,6 @@ class RSIStrategy(bt.Strategy):
                 self.sell()
                 self.buy_price = None
 
-# Setup cerebro with custom data feed
-cerebro = bt.Cerebro()
-symbol = 'AMZN'
-df = RedshiftDataFeed.fetch_data_from_redshift(symbol, '{backtest_window}')
-data = RedshiftDataFeed(dataname=df)
-cerebro.adddata(data)
-cerebro.addstrategy(RSIStrategy)
-cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpe')
-cerebro.addanalyzer(btanalyzers.DrawDown, _name='drawdown')
-cerebro.addanalyzer(btanalyzers.Returns, _name='returns')
-cerebro.broker.setcash(100000.0)
-results = cerebro.run()
 ```
 
 Generate complete Python code with:
@@ -155,7 +104,7 @@ Generate complete Python code with:
 - Stop loss/take profit implementation if specified
 - Proper position management
 
-Return only the Python code with redshift custom feed, no explanations.
+Return only the Python code, no explanations.
 """
     
     def _format_conditions(self, conditions: list) -> str:
