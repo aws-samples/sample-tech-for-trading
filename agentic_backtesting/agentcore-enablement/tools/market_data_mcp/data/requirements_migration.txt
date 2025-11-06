@@ -1,0 +1,6 @@
+# Requirements for ClickHouse to S3 Tables migration
+pandas>=2.0.0
+pyarrow>=10.0.0
+requests>=2.28.0
+boto3>=1.26.0
+pyiceberg[s3fs,boto3]>=0.5.0
