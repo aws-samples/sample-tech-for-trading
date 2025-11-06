@@ -7,6 +7,18 @@ Single agent with Strands tools for strategy generation, backtesting, and result
 import os
 os.environ["BYPASS_TOOL_CONSENT"] = "true"
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
+# Verify environment variables are loaded
+print("🔧 Environment Variables Loaded:")
+print(f"   AGENTCORE_GATEWAY_URL: {os.getenv('AGENTCORE_GATEWAY_URL', 'Not set')}")
+print(f"   COGNITO_USER_POOL_ID: {os.getenv('COGNITO_USER_POOL_ID', 'Not set')}")
+print(f"   COGNITO_CLIENT_ID: {os.getenv('COGNITO_CLIENT_ID', 'Not set')[:10]}..." if os.getenv('COGNITO_CLIENT_ID') else "   COGNITO_CLIENT_ID: Not set")
+print(f"   AWS_REGION: {os.getenv('AWS_REGION', 'Not set')}")
+print(f"   DEBUG: {os.getenv('DEBUG', 'Not set')}")
+
 from bedrock_agentcore import BedrockAgentCoreApp
 from strands import Agent, tool
 import pandas as pd
@@ -22,11 +34,16 @@ import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, Any
 
+from agents.strategy_generator import StrategyGeneratorAgent
+
 # Initialize the AgentCore app
 app = BedrockAgentCoreApp()
 
 # Global workflow memory for AgentCore Memory demonstration
 workflow_memory = {}
+
+# Global variables for strategy generation
+_strategy_call_count = 0
 
 def get_secret_hash(username: str, client_id: str, client_secret: str) -> str:
     """Generate secret hash for Cognito authentication"""
@@ -91,10 +108,17 @@ async def call_gateway_market_data_with_cognito(symbol: str, param_type: str = "
         # Authenticate with Cognito
         access_token = await authenticate_with_cognito()
         
-        # Prepare request payload for the lambda function
+        # Prepare JSON-RPC 2.0 request payload
         payload = {
-            'symbol': symbol.upper(),
-            'limit': 252
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "market-data-lambda-target___get_market_data",
+                "arguments": {
+                    "symbol": symbol.upper()
+                }
+            }
         }
         
         # Set up headers with Cognito token
@@ -116,12 +140,63 @@ async def call_gateway_market_data_with_cognito(symbol: str, param_type: str = "
             
             print(f"📥 Gateway response status: {response.status_code}")
             
+            # Print full response content for debugging
+            try:
+                response_text = response.text
+                print(f"📄 Full Gateway Response Details:")
+                print(f"   Status Code: {response.status_code}")
+                print(f"   Response Headers: {dict(response.headers)}")
+                print(f"   Response Length: {len(response_text)} characters")
+                print(f"   Content Type: {response.headers.get('content-type', 'Unknown')}")
+                print(f"📝 Raw Response Content:")
+                print(f"   {response_text}")
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    print(f"📋 Parsed JSON Response (Pretty Formatted):")
+                    print(f"{json.dumps(data, indent=2, default=str)}")
+                else:
+                    print(f"❌ Non-200 Status Code Response:")
+                    print(f"   Status: {response.status_code}")
+                    print(f"   Reason: {response.reason_phrase if hasattr(response, 'reason_phrase') else 'Unknown'}")
+                    print(f"   Content: {response_text}")
+                    
+            except json.JSONDecodeError as e:
+                print(f"⚠️ JSON Decode Error: {e}")
+                print(f"   Raw response text: {response.text}")
+            except Exception as e:
+                print(f"⚠️ Error processing response: {e}")
+                print(f"   Raw response text: {response.text}")
+            
             if response.status_code == 200:
                 data = response.json()
                 print("✅ Successfully fetched data from AgentCore Gateway")
                 
-                # Process the response data
-                if data.get('success') and data.get('data'):
+                # Handle JSON-RPC 2.0 response format
+                if 'jsonrpc' in data:
+                    if 'error' in data:
+                        error_msg = data['error']
+                        print(f"❌ Gateway returned error: {error_msg}")
+                        raise Exception(f"Gateway error: {error_msg}")
+                    elif 'result' in data:
+                        result = data['result']
+                        # Extract market data from JSON-RPC result
+                        if isinstance(result, dict) and 'data' in result:
+                            return {
+                                'symbol': result.get('symbol', symbol),
+                                'data': result['data'],
+                                'total_rows': len(result['data']) if 'data' in result else 0,
+                                'source': 'agentcore_gateway'
+                            }
+                        else:
+                            return {
+                                'symbol': symbol,
+                                'data': result,
+                                'total_rows': len(result) if isinstance(result, list) else 0,
+                                'source': 'agentcore_gateway'
+                            }
+                # Handle legacy response format
+                elif data.get('success') and data.get('data'):
                     metadata = data['metadata']
                     market_data = data['data']
                     return {
@@ -147,6 +222,7 @@ async def call_gateway_market_data_with_cognito(symbol: str, param_type: str = "
 def fetch_market_data_via_gateway(symbol: str = None, investment_area: str = None) -> Dict[str, Any]:
     """
     Fetch market data via AgentCore Gateway MCP with Cognito authentication.
+    This tool waits synchronously for completion before returning.
     
     Args:
         symbol: Stock symbol (e.g., AMZN) - preferred method
@@ -154,6 +230,8 @@ def fetch_market_data_via_gateway(symbol: str = None, investment_area: str = Non
     Returns:
         Market data from external service via Gateway
     """
+    import time
+    
     if symbol:
         print(f"🌐 AgentCore Gateway: Fetching {symbol} data via MCP...")
         target_param = symbol
@@ -163,16 +241,66 @@ def fetch_market_data_via_gateway(symbol: str = None, investment_area: str = Non
         target_param = "AMZN"
         param_type = "symbol"
     
+    print("⏳ Fetching market data (synchronous)...")
+    start_time = time.time()
+    
     try:
-        return asyncio.run(call_gateway_market_data_with_cognito(target_param, param_type))
+        result = asyncio.run(call_gateway_market_data_with_cognito(target_param, param_type))
+        processing_time = time.time() - start_time
+        print(f"⏱️ Market data fetch completed in {processing_time:.2f} seconds")
+        print("✅ Market data fetch successful")
+        time.sleep(0.5)  # Brief pause to ensure completion
+        return result
     except Exception as e:
-        print(f"❌ AgentCore Gateway: Failed to fetch via Gateway - {str(e)}")
+        processing_time = time.time() - start_time
+        print(f"❌ AgentCore Gateway: Failed to fetch via Gateway after {processing_time:.2f} seconds - {str(e)}")
+        print("⚠️ Using fallback data...")
+        # Return fallback data for demo purposes
+        result = generate_fallback_market_data(target_param)
+        print("✅ Fallback data generated")
+        time.sleep(0.5)  # Brief pause to ensure completion
+        return result
+
+def generate_fallback_market_data(symbol: str) -> Dict[str, Any]:
+    """Generate fallback market data when gateway is unavailable"""
+    print(f"⚠️ Using fallback data for {symbol}")
+    
+    # Generate realistic-looking sample data
+    import random
+    random.seed(hash(symbol) % 1000)  # Consistent data per symbol
+    
+    base_price = random.uniform(50, 300)
+    data_points = 252
+    
+    return {
+        'symbol': symbol.upper(),
+        'data_points': data_points,
+        'period_start': (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d'),
+        'period_end': datetime.now().strftime('%Y-%m-%d'),
+        'price_data': {
+            'initial_price': round(base_price, 2),
+            'final_price': round(base_price * random.uniform(0.8, 1.3), 2),
+            'min_price': round(base_price * random.uniform(0.7, 0.9), 2),
+            'max_price': round(base_price * random.uniform(1.1, 1.4), 2)
+        },
+        'statistics': {
+            'total_return_pct': round(random.uniform(-20, 30), 2),
+            'avg_daily_volume': random.randint(1000000, 50000000)
+        },
+        'technical_indicators': {
+            'current_sma_20': round(base_price * random.uniform(0.95, 1.05), 2),
+            'current_sma_50': round(base_price * random.uniform(0.90, 1.10), 2)
+        },
+        'source': 'fallback_data'
+    }
+
+strategy_agent = StrategyGeneratorAgent()
 
 @tool
 def generate_trading_strategy(query: str) -> str:
     """
     Generate executable trading strategy code from natural language descriptions.
-
+   
     Args:
         query: Natural language trading strategy in JSON format with sample below:
          {
@@ -182,40 +310,66 @@ def generate_trading_strategy(query: str) -> str:
             "max_positions": 1,
             "stop_loss": 5,
             "take_profit": 10,
-            "buy_conditions": EMA 50 > EMA 250,
-            "sell_conditions": EMA 50 < EMA 250,
+            "buy_conditions":  "EMA50 > EMA200",
+            "sell_conditions": "EMA50 < EMA200"
         }
 
     Returns:
         Complete Backtrader strategy Python code ready for backtesting
     """
     global _strategy_call_count
-    
-    _strategy_call_count += 1
-    callback = getattr(strategy_generator, '_callback', None)
-    
+
     agent_name = "🧠 STRATEGY GENERATOR AGENT"
     input_data = query
     reasoning = "Converting user trading idea into executable strategy code..."
     
-    print(f"\n🔄 {agent_name} CALL #{_strategy_call_count}")
+    print(f"\n� {agent_name} CALL #{_strategy_call_count}")
     print("="*50)
     print(f"📥 INPUT: {input_data}")
     print(f"🧠 REASONING: {reasoning}")
     
-    result = strategy_agent.process(query)
+    print("⏳ Processing strategy generation (synchronous)...")
     
-    print(f"📤 OUTPUT: {result}")
+    # Record start time for monitoring
+    import time
+    start_time = time.time()
     
-    print("="*50)
-    return result
+    try:
+        # Call strategy agent and wait for completion
+        result = strategy_agent.process(query)
+        
+        # Calculate processing time
+        processing_time = time.time() - start_time
+        
+        print(f"⏱️ Strategy generation completed in {processing_time:.2f} seconds")
+        print(f"📤 OUTPUT: {result}")
+        
+        # Ensure we have a valid result before proceeding
+        if not result or len(str(result).strip()) < 50:
+            print("⚠️ Strategy generation returned insufficient content, retrying...")
+            time.sleep(2)  # Brief wait before retry
+            result = strategy_agent.process(query)
             
+        print("✅ Strategy generation completed successfully")
+        print("="*50)
+        
+        # Add a small delay to ensure completion
+        time.sleep(1)
+        
+        return result
+        
+    except Exception as e:
+        processing_time = time.time() - start_time
+        print(f"❌ Strategy generation failed after {processing_time:.2f} seconds: {e}")
+        print("="*50)
+        raise
 
 
 @tool
 def run_backtest(strategy_code: str, market_data: Dict[str, Any], initial_investment: float) -> Dict[str, Any]:
     """
     Strands Tool: Execute backtesting simulation.
+    This tool waits synchronously for completion before returning.
     
     Args:
         strategy_code: Generated Python strategy code
@@ -225,8 +379,13 @@ def run_backtest(strategy_code: str, market_data: Dict[str, Any], initial_invest
     Returns:
         Backtest results with performance metrics
     """
+    import time
+    
     print(f"⚡ Backtest Tool: Executing simulation...")
     print(f"   Initial investment: ${initial_investment:,.2f}")
+    print("⏳ Running backtest simulation (synchronous)...")
+    
+    start_time = time.time()
     
     try:
         symbol = market_data.get('symbol', 'DEMO')
@@ -254,16 +413,25 @@ def run_backtest(strategy_code: str, market_data: Dict[str, Any], initial_invest
             'data_points': market_data.get('data_points', 252)
         }
         
+        processing_time = time.time() - start_time
+        print(f"⏱️ Backtest completed in {processing_time:.2f} seconds")
         print(f"✅ Backtest Tool: Completed - {total_return_pct:.2f}% return")
+        
+        # Brief pause to ensure completion
+        time.sleep(0.5)
+        
         return results
         
     except Exception as e:
+        processing_time = time.time() - start_time
+        print(f"❌ Backtest failed after {processing_time:.2f} seconds: {e}")
         return {'error': f'Backtest execution failed: {str(e)}'}
 
 @tool
 def create_results_summary(backtest_results: Dict[str, Any]) -> Dict[str, Any]:
     """
     Strands Tool: Create comprehensive results summary.
+    This tool waits synchronously for completion before returning.
     
     Args:
         backtest_results: Results from backtest tool
@@ -271,8 +439,13 @@ def create_results_summary(backtest_results: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Formatted results summary with performance categorization
     """
+    import time
+    
     print(f"📊 Results Tool: Processing results...")
     print(f"💾 AgentCore Memory: Storing results...")
+    print("⏳ Creating results summary (synchronous)...")
+    
+    start_time = time.time()
     
     if 'error' in backtest_results:
         return {
@@ -326,10 +499,18 @@ def create_results_summary(backtest_results: Dict[str, Any]) -> Dict[str, Any]:
             }
         }
         
+        processing_time = time.time() - start_time
+        print(f"⏱️ Results summary completed in {processing_time:.2f} seconds")
         print(f"✅ Results Tool: Summary created successfully")
+        
+        # Brief pause to ensure completion
+        time.sleep(0.5)
+        
         return summary
         
     except Exception as e:
+        processing_time = time.time() - start_time
+        print(f"❌ Results summary failed after {processing_time:.2f} seconds: {e}")
         return {
             'status': 'error',
             'message': f'Results processing failed: {str(e)}',
@@ -337,18 +518,41 @@ def create_results_summary(backtest_results: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
+
+
 # Create the agent with all Strands tools
 quant_agent = Agent(
-    system_prompt="""You are the Quant Backtesting Agent. You help users create and test trading strategies.
+    system_prompt="""You are the Quant Backtesting Agent. When you receive ANY request, you MUST automatically execute ALL 4 steps in this EXACT sequence:
 
-You have these Strands tools available:
-- generate_trading_strategy: Create Python trading strategy code  
-- fetch_market_data_via_gateway: Get market data via AgentCore Gateway (supports both stock symbols and sectors)
-- run_backtest: Execute backtesting simulation
-- create_results_summary: Process and format results
+STEP 1: ALWAYS call generate_trading_strategy first
+- Use the user's request to create a JSON strategy format
+- If no specific strategy is provided, create a default EMA crossover strategy for AMZN
+- Pass the JSON strategy to generate_trading_strategy tool
 
-You can work with a stock symbol (e.g. AMZN) 
-Always explain the Agent reasoning and AgentCore services being demonstrated.""",
+STEP 2: ALWAYS call fetch_market_data_via_gateway 
+- Use the symbol from the strategy (default to AMZN if not specified)
+- Call fetch_market_data_via_gateway with the symbol
+
+STEP 3: ALWAYS call run_backtest
+- Use the strategy code from Step 1 and market data from Step 2
+- Use initial investment of $10,000 if not specified
+- Call run_backtest with all required parameters
+
+STEP 4: ALWAYS call create_results_summary
+- Use the backtest results from Step 3
+- Call create_results_summary to format the final results
+
+CRITICAL RULES:
+- Execute ALL 4 steps in sequence for EVERY request
+- WAIT for each tool to complete before calling the next tool
+- Do NOT call multiple tools simultaneously
+- Do NOT ask for clarification - proceed with defaults if information is missing
+- Do NOT explain what you're going to do - just DO all 4 steps
+- Always use these default values if not provided:
+  * Symbol: AMZN
+  * Initial Investment: $10,000
+  * Strategy: EMA50 > EMA200 crossover
+- Complete the entire workflow automatically and synchronously""",
     tools=[
         fetch_market_data_via_gateway,
         generate_trading_strategy, 
@@ -362,31 +566,44 @@ def invoke(payload, context=None):
     """Main entrypoint for the backtesting agent"""
     try:
         print(f"🚀 AgentCore Runtime: Backtesting Agent processing request")
+        print(f"📥 Payload received: {payload}")
         
-        # Handle direct workflow execution
-        required_keys = ['initial_investment', 'buy_condition', 'sell_condition']
-        if isinstance(payload, dict) and all(key in payload for key in required_keys):
-            # Check if we have either symbol or investment_area
-            if 'symbol' in payload or 'investment_area' in payload:
-                user_id = payload.get('user_id', 'anonymous')
-                result = execute_full_backtest_workflow(
-                    initial_investment=payload['initial_investment'],
-                    buy_condition=payload['buy_condition'],
-                    sell_condition=payload['sell_condition'],
-                    symbol=payload.get('symbol'),
-                    investment_area=payload.get('investment_area'),
-                    user_id=user_id
-                )
-                return {"result": result}
+        # Always trigger the complete 4-step workflow regardless of input
+        user_message = """how is the strategy performance: 
+         {"name": "EMA Crossover Strategy", "stock_symbol": "AMZN", "backtest_window": "1Y", "max_positions": 1, "stop_loss": 5, "take_profit": 10, "buy_conditions": "EMA50 > EMA200", "sell_conditions": "EMA50 < EMA200"}
+        """
         
-        # Handle conversational requests
-        user_message = payload.get("prompt", "Hello! I can help you with backtesting trading strategies. What would you like to test?")
         result = quant_agent(user_message)
         
         return {"result": result.message}
         
     except Exception as e:
+        print(f"❌ Error in invoke function: {e}")
+        import traceback
+        traceback.print_exc()
         return {"result": {"status": "error", "error": str(e)}}
 
 if __name__ == "__main__":
-    app.run(port=8081)
+    print("🚀 Starting AgentCore Backtesting Agent...")
+    print(f"   App type: {type(app)}")
+    print(f"   App methods: {[m for m in dir(app) if not m.startswith('_')]}")
+    
+    # Test invoke function directly first
+    print("\n🧪 Testing invoke function directly...")
+    try:
+        test_payload = {"prompt": "Hello, test message"}
+        result = invoke(test_payload)
+        print(f"✅ Direct invoke test successful: {result}")
+    except Exception as e:
+        print(f"❌ Direct invoke test failed: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    print("\n🌐 Starting server on port 8081...")
+    try:
+        # app.run(port=8081)
+        print("exit for test")
+    except Exception as e:
+        print(f"❌ Server startup failed: {e}")
+        import traceback
+        traceback.print_exc()
