@@ -21,6 +21,10 @@ print(f"   DEBUG: {os.getenv('DEBUG', 'Not set')}")
 
 from bedrock_agentcore import BedrockAgentCoreApp
 from bedrock_agentcore.memory import MemoryClient
+from bedrock_agentcore_starter_toolkit.operations.memory.manager import MemoryManager
+from bedrock_agentcore.memory.session import MemorySessionManager
+from bedrock_agentcore.memory.constants import ConversationalMessage, MessageRole
+from bedrock_agentcore_starter_toolkit.operations.memory.models.strategies import SemanticStrategy
 from strands import Agent, tool
 import pandas as pd
 import numpy as np
@@ -41,8 +45,11 @@ from agents.backtest import BacktestTool
 # Initialize the AgentCore app
 app = BedrockAgentCoreApp()
 
-# Initialize AgentCore Memory Client
+# Initialize AgentCore Memory Client (legacy)
 memory_client = MemoryClient(region_name="us-east-1")
+
+# Initialize AgentCore Memory Manager (new approach)
+memory_manager = MemoryManager(region_name="us-east-1")
 
 # Global memory instance for market data storage
 agentcore_memory = None
@@ -51,49 +58,44 @@ agentcore_memory = None
 _stored_market_data = {}
 
 def initialize_agentcore_memory():
-    """Initialize AgentCore Memory for market data storage"""
+    """Initialize AgentCore Memory for market data storage using MemoryManager"""
     global agentcore_memory
     try:
         if agentcore_memory is None:
-            print("🧠 Initializing AgentCore Memory...")
+            print("🧠 Initializing AgentCore Memory with MemoryManager...")
             
-            # First, try to list existing memories to see if one already exists
-            try:
-                memories = memory_client.list_memories()
-                existing_memory = None
-                
-                # Look for existing memory with our name
-                for memory in memories.get('memories', []):
-                    if memory.get('name') == 'QuantAgentMemory':
-                        existing_memory = memory
-                        print(f"📋 Found existing AgentCore Memory: {memory.get('id')}")
-                        break
-                
-                if existing_memory:
-                    agentcore_memory = existing_memory
-                    print(f"✅ Using existing AgentCore Memory with ID: {agentcore_memory.get('id')}")
-                else:
-                    # Create new memory if none exists
-                    print("🆕 Creating new AgentCore Memory...")
-                    agentcore_memory = memory_client.create_memory(
-                        name="QuantAgentMemory",
-                        description="Memory for storing backtest information for the Quant Agent"
+            # Use MemoryManager with semantic strategy for better memory management
+            agentcore_memory = memory_manager.get_or_create_memory(
+                name="QuantAgentMarketDataMemory",
+                description="Memory for storing market data and backtest information for the Quant Agent",
+                strategies=[
+                    SemanticStrategy(
+                        name="quantAgentSemanticMemory",
+                        namespaces=['/strategies/{memoryStrategyId}/actors/{actorId}'],
                     )
-                    print(f"✅ AgentCore Memory created with ID: {agentcore_memory.get('id')}")
-                    
-            except Exception as list_error:
-                print(f"⚠️ Could not list memories: {list_error}")
-                # Fallback: try to create directly
-                agentcore_memory = memory_client.create_memory(
-                    name="QuantAgentMemory",
-                    description="Memory for storing backtest information for the Quant Agent"
-                )
-                print(f"✅ AgentCore Memory created with ID: {agentcore_memory.get('id')}")
+                ]
+            )
+            
+            print(f"✅ AgentCore Memory initialized with ID: {agentcore_memory.get('id')}")
+            print(f"📋 Memory name: {agentcore_memory.get('name')}")
+            print(f"🧠 Using semantic strategy for intelligent memory management")
                 
         return agentcore_memory
     except Exception as e:
         print(f"❌ Failed to initialize AgentCore Memory: {e}")
-        return None
+        print(f"🔄 Falling back to legacy MemoryClient approach...")
+        
+        # Fallback to legacy approach
+        try:
+            agentcore_memory = memory_client.create_memory(
+                name="QuantAgentMemoryFallback",
+                description="Fallback memory for storing backtest information"
+            )
+            print(f"✅ Fallback AgentCore Memory created with ID: {agentcore_memory.get('id')}")
+            return agentcore_memory
+        except Exception as fallback_error:
+            print(f"❌ Fallback memory creation also failed: {fallback_error}")
+            return None
 
 def extract_market_data_from_gateway_response(gateway_response: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -116,7 +118,7 @@ def extract_market_data_from_gateway_response(gateway_response: Dict[str, Any]) 
         Structured market data ready for Backtrader
     """
     try:
-        print("🔍 Extracting market data from gateway response...")
+        # print("🔍 Extracting market data from gateway response...")
         
         # Navigate through JSON-RPC hierarchy: result -> content -> text
         result = gateway_response.get('result', {})
@@ -183,7 +185,7 @@ def extract_market_data_from_gateway_response(gateway_response: Dict[str, Any]) 
             }
         }
         
-        print(f"✅ Successfully extracted and transformed {len(transformed_data)} data points")
+        # print(f"✅ Successfully extracted and transformed {len(transformed_data)} data points")
         return result_data
         
     except Exception as e:
@@ -201,42 +203,9 @@ def extract_market_data_from_gateway_response(gateway_response: Dict[str, Any]) 
             }
         }
 
-async def save_backtest_results_to_memory(results: Dict[str, Any]):
-    """Save backtest results to AgentCore Memory using create_event"""
-    try:
-        memory = initialize_agentcore_memory()
-        if memory is None:
-            print("⚠️ AgentCore Memory not available, skipping save")
-            return
-        
-        memory_id = memory.get('id')
-        symbol = results.get('symbol', 'UNKNOWN')
-        print(f"💾 Saving backtest results for {symbol} to AgentCore Memory...")
-        
-        # Create backtest results payload message
-        backtest_payload = f"Backtest results for {symbol}: {json.dumps(results)}"
-        
-        # Create event using the correct AgentCore Memory API format
-        event = memory_client.create_event(
-            memory_id=memory_id,
-            actor_id="BacktestAgent",
-            session_id="BacktestSession2025",
-            messages=[(backtest_payload, "ASSISTANT")],
-            metadata={
-                "event_type": {"stringValue": "backtest_results"},
-                "symbol": {"stringValue": symbol.upper()},
-                "timestamp": {"stringValue": datetime.now().isoformat()},
-                "source": {"stringValue": "run_backtest_tool"}
-            }
-        )
-        
-        print(f"✅ Backtest results saved to AgentCore Memory - Event ID: {event.get('id')}")
-        
-    except Exception as e:
-        print(f"❌ Failed to save backtest results to AgentCore Memory: {e}")
 
 def save_backtest_results_to_memory_sync(results: Dict[str, Any]):
-    """Save backtest results to AgentCore Memory using create_event (synchronous version)"""
+    """Save backtest results to AgentCore Memory using MemorySessionManager (synchronous version)"""
     try:
         memory = initialize_agentcore_memory()
         if memory is None:
@@ -247,30 +216,31 @@ def save_backtest_results_to_memory_sync(results: Dict[str, Any]):
         symbol = results.get('symbol', 'UNKNOWN')
         print(f"💾 Saving backtest results for {symbol} to AgentCore Memory...")
         
-        # Create backtest results payload message
-        backtest_payload = f"Backtest results for {symbol}: {json.dumps(results)}"
-        
-        # Create event using the correct AgentCore Memory API format
-        event = memory_client.create_event(
+        # Use MemorySessionManager for semantic memory operations
+        session_manager = MemorySessionManager(
             memory_id=memory_id,
             actor_id="BacktestAgent",
-            session_id="BacktestSession2025",
-            messages=[(backtest_payload, "ASSISTANT")],
-            metadata={
-                "event_type": {"stringValue": "backtest_results"},
-                "symbol": {"stringValue": symbol.upper()},
-                "timestamp": {"stringValue": datetime.now().isoformat()},
-                "source": {"stringValue": "run_backtest_tool"}
-            }
+            session_id="BacktestSession2025"
         )
         
-        print(f"✅ Backtest results saved to AgentCore Memory - Event ID: {event.get('id')}")
+        # Create conversational message for semantic storage
+        message = ConversationalMessage(
+            role=MessageRole.ASSISTANT,
+            content=f"Backtest results for {symbol}: {json.dumps(results)}"
+        )
+        
+        # Add message to semantic memory
+        session_manager.add_message(message)
+        
+        print(f"✅ Backtest results saved to AgentCore Memory using semantic strategy")
         
     except Exception as e:
         print(f"❌ Failed to save backtest results to AgentCore Memory: {e}")
+        import traceback
+        traceback.print_exc()
 
 def get_backtest_results_from_memory(symbol: str = None) -> Dict[str, Any]:
-    """Retrieve backtest results from AgentCore Memory using list_events"""
+    """Retrieve backtest results from AgentCore Memory using MemorySessionManager"""
     try:
         memory = initialize_agentcore_memory()
         if memory is None:
@@ -280,64 +250,43 @@ def get_backtest_results_from_memory(symbol: str = None) -> Dict[str, Any]:
         memory_id = memory.get('id')
         print(f"🔍 Retrieving backtest results from AgentCore Memory...")
         
-        # List events using the correct AgentCore Memory API format
-        events = memory_client.list_events(
+        # Use MemorySessionManager for semantic memory retrieval
+        session_manager = MemorySessionManager(
             memory_id=memory_id,
             actor_id="BacktestAgent",
-            session_id="BacktestSession2025",
-            filter={
-                "eventMetadata": [{
-                    "left": {"metadataKey": "event_type"},
-                    "operator": "EQUALS_TO",
-                    "right": {"metadataValue": {"stringValue": "backtest_results"}}
-                }]
-            },
-            max_results=10,
-            include_payloads=True
+            session_id="BacktestSession2025"
         )
         
-        # Find the most recent backtest results (optionally for specific symbol)
-        latest_event = None
-        latest_timestamp = None
+        # Get conversation history (messages stored in this session)
+        messages = session_manager.get_messages()
         
-        for event in events.get('events', []):
-            try:
-                # Check if this event matches the symbol filter (if provided)
-                metadata = event.get('metadata', {})
-                event_symbol = metadata.get('symbol', {}).get('stringValue', '')
-                
-                if symbol is None or event_symbol == symbol.upper():
-                    event_timestamp_str = metadata.get('timestamp', {}).get('stringValue', '')
-                    if event_timestamp_str:
-                        event_timestamp = datetime.fromisoformat(event_timestamp_str)
-                        if latest_timestamp is None or event_timestamp > latest_timestamp:
-                            latest_event = event
-                            latest_timestamp = event_timestamp
-            except Exception as e:
-                print(f"⚠️ Error parsing backtest event: {e}")
-                continue
+        # Find the most recent backtest results message
+        latest_result = None
+        for message in reversed(messages):  # Start from most recent
+            if message.content and 'Backtest results for' in message.content:
+                # Check if this is for the requested symbol (if specified)
+                if symbol is None or f'Backtest results for {symbol.upper()}:' in message.content:
+                    try:
+                        # Extract JSON data from the message content
+                        if ':' in message.content:
+                            json_part = message.content.split(':', 1)[1].strip()
+                            latest_result = json.loads(json_part)
+                            break
+                    except Exception as e:
+                        print(f"⚠️ Error parsing backtest results from message: {e}")
+                        continue
         
-        if latest_event:
+        if latest_result:
             print(f"✅ Found backtest results in AgentCore Memory")
-            # Extract backtest results from the message payload
-            messages = latest_event.get('messages', [])
-            if messages:
-                message_content = messages[0].get('content', '')
-                # Parse the backtest results from the message content
-                try:
-                    # Extract JSON data from the message
-                    if 'Backtest results for' in message_content and ':' in message_content:
-                        json_part = message_content.split(':', 1)[1].strip()
-                        return json.loads(json_part)
-                except Exception as e:
-                    print(f"⚠️ Error parsing backtest results from message: {e}")
-            return None
+            return latest_result
         else:
             print(f"❌ No backtest results found in AgentCore Memory")
             return None
             
     except Exception as e:
         print(f"❌ Failed to retrieve backtest results from AgentCore Memory: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 # Global variables for strategy generation
@@ -370,7 +319,7 @@ async def authenticate_with_cognito() -> str:
         if not all([client_id, client_secret, username, password]):
             raise ValueError("Missing Cognito configuration. Please set COGNITO_CLIENT_ID, COGNITO_CLIENT_SECRET, COGNITO_USERNAME, and COGNITO_PASSWORD in .env")
         
-        print(f"🔐 Authenticating with Cognito User Pool: {user_pool_id}")
+        # print(f"🔐 Authenticating with Cognito User Pool: {user_pool_id}")
         
         # Initialize Cognito client
         cognito_client = boto3.client('cognito-idp', region_name=region)
@@ -391,7 +340,7 @@ async def authenticate_with_cognito() -> str:
         )
         
         access_token = response['AuthenticationResult']['AccessToken']
-        print("✅ Cognito authentication successful")
+        # print("✅ Cognito authentication successful")
         return access_token
         
     except Exception as e:
@@ -515,7 +464,7 @@ def fetch_market_data_via_gateway(symbol: str = None, investment_area: str = Non
         target_param = "AMZN"
         param_type = "symbol"
     
-    print("⏳ Fetching market data (synchronous)...")
+    # print("⏳ Fetching market data (synchronous)...")
     start_time = time.time()
     
     try:
@@ -597,7 +546,7 @@ def generate_trading_strategy(query: str) -> str:
         processing_time = time.time() - start_time
         
         print(f"⏱️ Strategy generation completed in {processing_time:.2f} seconds")
-        print(f"📤 OUTPUT: {result}")
+        print(f"📤 Generated backtrader strategy code: {result}")
         
         # Ensure we have a valid result before proceeding
         if not result or len(str(result).strip()) < 50:
@@ -659,6 +608,9 @@ def run_backtest(symbol: str, strategy_code: str, params: dict = None) -> dict:
     symbol_key = symbol
     symbol_data = _stored_market_data[symbol_key]
     
+    # print(f"🔍 DEBUG - Available symbols: {list(_stored_market_data.keys())}")
+    print(f"🔍 DEBUG - Using symbol: {symbol_key}")
+    
     # Get the transformed daily data
     daily_data = symbol_data.get('daily_data', [])
     
@@ -666,7 +618,7 @@ def run_backtest(symbol: str, strategy_code: str, params: dict = None) -> dict:
         print("❌ NO MARKET DATA AVAILABLE - Cannot run backtest")
         return {'error': 'No market data available for backtesting'}
     
-    print(f"📊 Using {len(daily_data)} data points for {symbol_key}")
+    # print(f"📊 Using {len(daily_data)} data points for {symbol_key}")
     
     # Convert transformed_data to pandas DataFrame for Backtrader
     # The daily_data already has the correct column names: date, symbol, open, high, low, close, volume, adj_close
@@ -683,17 +635,45 @@ def run_backtest(symbol: str, strategy_code: str, params: dict = None) -> dict:
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
     print(f"📈 DataFrame created with columns: {list(df.columns)}")
-    print(f"📅 Date range: {df.index.min()} to {df.index.max()}")
+    # print(f"📅 Date range: {df.index.min()} to {df.index.max()}")
     
-    # Print all dates in the DataFrame
-    print(f"📆 All dates in DataFrame ({len(df.index)} total):")
-    for i, date in enumerate(df.index):
-        if i < 1000:  # Show first 10 dates
-            print(f"   {i+1:3d}: {date.strftime('%Y-%m-%d')}")
-        elif i == 1000:
-            print(f"   ... (showing first 10 and last 10 of {len(df.index)} dates)")
-        elif i >= len(df.index) - 10:  # Show last 10 dates
-            print(f"   {i+1:3d}: {date.strftime('%Y-%m-%d')}")
+    # 🔍 COMPREHENSIVE DEBUG INFO FOR BACKTRADER ERROR TROUBLESHOOTING
+    print(f"\n�l DEBUG - DataFrame Analysis:")
+    print(f"   Shape: {df.shape}")
+    print(f"   Index type: {type(df.index)}")
+    print(f"   Index name: {df.index.name}")
+    print(f"   Columns: {list(df.columns)}")
+    print(f"   Data types:")
+    for col in df.columns:
+        print(f"     {col}: {df[col].dtype}")
+    
+    # # Check for missing values
+    # missing_values = df.isnull().sum()
+    # if missing_values.any():
+    #     print(f"⚠️ WARNING - Missing values found:")
+    #     for col, count in missing_values.items():
+    #         if count > 0:
+    #             print(f"     {col}: {count} missing values")
+    # else:
+    #     print(f"✅ No missing values found")
+    
+    # Print sample data for inspection
+    print(f"\n📊 Sample data (first 3 rows):")
+    try:
+        print(df.head(3).to_string())
+    except Exception as e:
+        print(f"❌ Error displaying sample data: {e}")
+    
+    # # Validate required columns for Backtrader
+    # required_columns = ['open', 'high', 'low', 'close', 'volume']
+    # missing_columns = [col for col in required_columns if col not in df.columns]
+    # if missing_columns:
+    #     print(f"❌ ERROR - Missing required columns for Backtrader: {missing_columns}")
+    #     return {'error': f'Missing required columns: {missing_columns}'}
+    # else:
+    #     print(f"✅ All required Backtrader columns present: {required_columns}")
+    
+    # print(f"🔍 DEBUG - End of DataFrame analysis\n")
     
     # Prepare backtest input
     backtest_input = {
@@ -705,9 +685,41 @@ def run_backtest(symbol: str, strategy_code: str, params: dict = None) -> dict:
     print(f"📥 INPUT: strategy_code length: {len(strategy_code)}, symbol: {symbol_key}, rows: {len(daily_data)}")
     print(f"🧠 REASONING: Running strategy backtest with historical data...")
     
-    # Execute backtest
+    # Execute backtest with enhanced error handling
     start_time = time.time()
-    result = backtest_tool.process(backtest_input)
+    print(f"🚀 Starting backtest execution...")
+    
+    try:
+        result = backtest_tool.process(backtest_input)
+        
+        # Check if result contains detailed error information
+        if isinstance(result, dict) and 'error' in result:
+            # print(f"❌ BACKTEST FAILED WITH DETAILED ERROR:")
+            # print(f"   Error: {result['error']}")
+            
+            if 'error_location' in result:
+                print(f"   Location: {result['error_location']}")
+            
+            if 'debug_info' in result:
+                print(f"   Debug Info: {result['debug_info']}")
+            
+            if 'traceback' in result:
+                print(f"   📋 FULL TRACEBACK:")
+                print(result['traceback'])
+        else:
+            print(f"✅ Backtest execution completed")
+            
+    except Exception as backtest_error:
+        print(f"❌ BACKTEST TOOL EXCEPTION:")
+        print(f"   Error type: {type(backtest_error).__name__}")
+        print(f"   Error message: {str(backtest_error)}")
+        
+        # Try to get more detailed error info
+        import traceback
+        print(f"   Full traceback:")
+        traceback.print_exc()
+        
+        result = {'error': f'Backtest tool exception: {str(backtest_error)}'}
     processing_time = time.time() - start_time
     
     print(f"⏱️ Backtest completed in {processing_time:.2f} seconds")

@@ -31,7 +31,7 @@ Always return complete, runnable Python code with proper imports and class struc
         else:
             prompt = self._create_strategy_prompt(input_data)
             
-        print(f"FULL prompt: {prompt}")
+        # print(f"FULL prompt: {prompt}")
         return self.invoke_sync(prompt)
     
     def _create_strategy_prompt(self, config: Dict[str, Any]) -> str:
