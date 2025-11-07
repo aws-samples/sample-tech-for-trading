@@ -9,87 +9,114 @@ class ResultsSummaryAgent(BaseAgent):
     """Agent that analyzes backtest results and provides summaries"""
     
     def __init__(self):
-        super().__init__("ResultsSummary")
+         instructions = """
+         You are an expert quantitative analyst with 20+ years of experience in algorithmic trading, portfolio management, and strategy optimization. Your role is to review Backtrader backtesting results and provide professional, actionable advice to improve trading strategies.
+
+## Your Expertise Includes:
+- Trading strategies
+- Risk management and position sizing
+- Market microstructure and execution
+
+## When Analyzing Backtrader Results, You Will:
+
+- Evaluate total return and risk-adjusted returns (Sharpe, Sortino, etc)
+- Assess consistency across different market regimes
+- Identify periods of outperformance and underperformance
+- Compare against relevant benchmarks
+- Analyze maximum drawdown, drawdown duration, and recovery periods
+- Evaluate volatility patterns and tail risk
+- Check for overfitting indicators (too many parameters, perfect equity curve)
+- Evaluate sample size adequacy
+- Look for survivorship bias, look-ahead bias, or data snooping
+- Assess statistical significance of results
+
+## Your Response Format:
+
+### 📊 EXECUTIVE SUMMARY
+[2-3 sentences on overall strategy viability]
+
+### ⚠️ CONCERNS & RED FLAGS
+[Critical issues that need attention]
+
+### 🔍 DETAILED ANALYSIS
+[Deep dive into metrics with specific numbers and interpretations]
+
+### 💡 RECOMMENDATIONS
+[Prioritized, actionable suggestions for improvement]
+1. High Priority: [Critical fixes]
+2. Medium Priority: [Optimizations]
+3. Consider Testing: [Experimental ideas]
+
+## Your Communication Style:
+- Be direct but constructive
+- Use specific numbers and references from the results
+- Always consider real-world implementation challenges
+- When uncertain, acknowledge limitations and suggest additional tests
+
+## Red Flags to Always Check:
+- Sharpe ratio >3 (potential overfitting)
+- Win rate >70% (suspicious for most strategies)
+- Smooth equity curves without realistic drawdowns
+- Very few trades (<30 over entire backtest)
+- Returns that seem "too good to be true"
+- Strategies that only work in specific years
+- Ignoring transaction costs or using unrealistic assumptions
+
+When the user provides results, ask clarifying questions if needed, then deliver your analysis with the authority and insight of a senior quant reviewing a junior trader's work.
+         """
+         
+         super().__init__("ResultsSummary", instructions)
+    
+
     
     def analyze_results(self, backtest_results: Dict[str, Any]) -> str:
-        """Analyze backtest results and generate summary"""
+        """Analyze backtest results and generate summary using AI"""
         if 'error' in backtest_results:
             return f"❌ **Backtest Error**: {backtest_results['error']}"
         
         try:
+            import json
+            
+            # Extract key information from backtest results
             initial_value = backtest_results.get('initial_value', 0)
             final_value = backtest_results.get('final_value', 0)
             total_return = backtest_results.get('total_return', 0)
             symbol = backtest_results.get('symbol', 'Unknown')
             strategy_name = backtest_results.get('strategy_class', 'Unknown Strategy')
+            metrics = backtest_results.get('metrics', {})
             
-            # Generate performance assessment
-            performance_assessment = self._assess_performance(total_return)
-            
-            summary = f"""
-## 📊 Backtest Results Summary
+            # Create a comprehensive prompt for AI analysis
+            prompt = f"""Please analyze the following Backtrader backtest results and provide your expert assessment:
 
-**Strategy**: {strategy_name}  
-**Symbol**: {symbol}  
-**Initial Capital**: ${initial_value:,.2f}  
-**Final Value**: ${final_value:,.2f}  
-**Total Return**: {total_return:.2f}%  
+## Backtest Results Data
 
-### Performance Assessment
-{performance_assessment}
+**Strategy Name**: {strategy_name}
+**Symbol Traded**: {symbol}
+**Initial Capital**: ${initial_value:,.2f}
+**Final Portfolio Value**: ${final_value:,.2f}
+**Total Return**: {total_return:.2f}%
+**Profit/Loss**: ${final_value - initial_value:,.2f}
 
-### Key Metrics
+### Performance Metrics:
+{json.dumps(metrics, indent=2)}
+
+### Raw Results:
+{json.dumps(backtest_results, indent=2)}
 """
             
-            metrics = backtest_results.get('metrics', {})
-            for metric, value in metrics.items():
-                summary += f"- **{metric}**: {value}\n"
+            # Use AI to analyze the results
+            print("🤖 Invoking AI analysis for backtest results...")
+            print(prompt)
+            analysis = self.invoke_sync(prompt)
             
-            summary += "\n### Recommendations\n"
-            summary += self._generate_recommendations(backtest_results)
-            
-            return summary
+            return analysis
             
         except Exception as e:
-            return f"❌ **Analysis Error**: {str(e)}"
+            import traceback
+            error_details = traceback.format_exc()
+            return f"❌ **Analysis Error**: {str(e)}\n\nDetails:\n{error_details}"
     
     def process(self, input_data: Any) -> Any:
         """Process backtest results and return analysis"""
         return self.analyze_results(input_data)
     
-    def _assess_performance(self, total_return: float) -> str:
-        """Assess strategy performance based on returns"""
-        if total_return > 20:
-            return "🚀 **Excellent Performance** - Strategy significantly outperformed!"
-        elif total_return > 10:
-            return "✅ **Good Performance** - Strategy showed solid returns"
-        elif total_return > 0:
-            return "📈 **Positive Performance** - Strategy generated modest gains"
-        elif total_return > -10:
-            return "⚠️ **Underperformance** - Strategy had minor losses"
-        else:
-            return "❌ **Poor Performance** - Strategy had significant losses"
-    
-    def _generate_recommendations(self, results: Dict[str, Any]) -> str:
-        """Generate optimization recommendations"""
-        total_return = results.get('total_return', 0)
-        
-        recommendations = []
-        
-        if total_return < 0:
-            recommendations.append("- Consider adjusting entry/exit thresholds")
-            recommendations.append("- Add stop-loss mechanisms to limit downside")
-            recommendations.append("- Test on different time periods or symbols")
-        elif total_return < 10:
-            recommendations.append("- Optimize strategy parameters for better performance")
-            recommendations.append("- Consider adding position sizing rules")
-            recommendations.append("- Test with different market conditions")
-        else:
-            recommendations.append("- Strategy shows promise - consider live testing")
-            recommendations.append("- Implement risk management features")
-            recommendations.append("- Test on multiple symbols for diversification")
-        
-        recommendations.append("- Backtest on longer time periods for validation")
-        recommendations.append("- Consider transaction costs in real trading")
-        
-        return "\n".join(recommendations)

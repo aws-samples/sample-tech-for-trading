@@ -12,19 +12,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Verify environment variables are loaded
-print("🔧 Environment Variables Loaded:")
-print(f"   AGENTCORE_GATEWAY_URL: {os.getenv('AGENTCORE_GATEWAY_URL', 'Not set')}")
-print(f"   COGNITO_USER_POOL_ID: {os.getenv('COGNITO_USER_POOL_ID', 'Not set')}")
-print(f"   COGNITO_CLIENT_ID: {os.getenv('COGNITO_CLIENT_ID', 'Not set')[:10]}..." if os.getenv('COGNITO_CLIENT_ID') else "   COGNITO_CLIENT_ID: Not set")
-print(f"   AWS_REGION: {os.getenv('AWS_REGION', 'Not set')}")
-print(f"   DEBUG: {os.getenv('DEBUG', 'Not set')}")
+# print("🔧 Environment Variables Loaded:")
+# print(f"   AGENTCORE_GATEWAY_URL: {os.getenv('AGENTCORE_GATEWAY_URL', 'Not set')}")
+# print(f"   COGNITO_USER_POOL_ID: {os.getenv('COGNITO_USER_POOL_ID', 'Not set')}")
+# print(f"   COGNITO_CLIENT_ID: {os.getenv('COGNITO_CLIENT_ID', 'Not set')[:10]}..." if os.getenv('COGNITO_CLIENT_ID') else "   COGNITO_CLIENT_ID: Not set")
+# print(f"   AWS_REGION: {os.getenv('AWS_REGION', 'Not set')}")
+# print(f"   DEBUG: {os.getenv('DEBUG', 'Not set')}")
 
 from bedrock_agentcore import BedrockAgentCoreApp
 from bedrock_agentcore.memory import MemoryClient
 from bedrock_agentcore_starter_toolkit.operations.memory.manager import MemoryManager
-from bedrock_agentcore.memory.session import MemorySessionManager
 from bedrock_agentcore.memory.constants import ConversationalMessage, MessageRole
-from bedrock_agentcore_starter_toolkit.operations.memory.models.strategies import SemanticStrategy
 from strands import Agent, tool
 import pandas as pd
 import numpy as np
@@ -40,6 +38,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any
 
 from agents.strategy_generator import StrategyGeneratorAgent
+from agents.results_summary import ResultsSummaryAgent
 from agents.backtest import BacktestTool
 
 # Initialize the AgentCore app
@@ -47,55 +46,15 @@ app = BedrockAgentCoreApp()
 
 # Initialize AgentCore Memory Client (legacy)
 memory_client = MemoryClient(region_name="us-east-1")
-
-# Initialize AgentCore Memory Manager (new approach)
-memory_manager = MemoryManager(region_name="us-east-1")
-
-# Global memory instance for market data storage
-agentcore_memory = None
+_memory_id = "QuantAgentMemory-OiP2OCCjdp"
+_actor_id = "Quant"
+# Use a consistent session_id for the day so save and retrieve work together
+_session_id = f"quant_session_{datetime.now().strftime('%Y%m%d')}"  # Changes daily, not per second
+print(f"🔑 Start Session ID: {_session_id}")
 
 # Global storage for market data
 _stored_market_data = {}
 
-def initialize_agentcore_memory():
-    """Initialize AgentCore Memory for market data storage using MemoryManager"""
-    global agentcore_memory
-    try:
-        if agentcore_memory is None:
-            print("🧠 Initializing AgentCore Memory with MemoryManager...")
-            
-            # Use MemoryManager with semantic strategy for better memory management
-            agentcore_memory = memory_manager.get_or_create_memory(
-                name="QuantAgentMarketDataMemory",
-                description="Memory for storing market data and backtest information for the Quant Agent",
-                strategies=[
-                    SemanticStrategy(
-                        name="quantAgentSemanticMemory",
-                        namespaces=['/strategies/{memoryStrategyId}/actors/{actorId}'],
-                    )
-                ]
-            )
-            
-            print(f"✅ AgentCore Memory initialized with ID: {agentcore_memory.get('id')}")
-            print(f"📋 Memory name: {agentcore_memory.get('name')}")
-            print(f"🧠 Using semantic strategy for intelligent memory management")
-                
-        return agentcore_memory
-    except Exception as e:
-        print(f"❌ Failed to initialize AgentCore Memory: {e}")
-        print(f"🔄 Falling back to legacy MemoryClient approach...")
-        
-        # Fallback to legacy approach
-        try:
-            agentcore_memory = memory_client.create_memory(
-                name="QuantAgentMemoryFallback",
-                description="Fallback memory for storing backtest information"
-            )
-            print(f"✅ Fallback AgentCore Memory created with ID: {agentcore_memory.get('id')}")
-            return agentcore_memory
-        except Exception as fallback_error:
-            print(f"❌ Fallback memory creation also failed: {fallback_error}")
-            return None
 
 def extract_market_data_from_gateway_response(gateway_response: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -205,34 +164,23 @@ def extract_market_data_from_gateway_response(gateway_response: Dict[str, Any]) 
 
 
 def save_backtest_results_to_memory_sync(results: Dict[str, Any]):
-    """Save backtest results to AgentCore Memory using MemorySessionManager (synchronous version)"""
+    """Save backtest results to AgentCore Memory using create_event (synchronous version)"""
     try:
-        memory = initialize_agentcore_memory()
-        if memory is None:
-            print("⚠️ AgentCore Memory not available, skipping save")
-            return
-        
-        memory_id = memory.get('id')
         symbol = results.get('symbol', 'UNKNOWN')
         print(f"💾 Saving backtest results for {symbol} to AgentCore Memory...")
         
-        # Use MemorySessionManager for semantic memory operations
-        session_manager = MemorySessionManager(
-            memory_id=memory_id,
-            actor_id="BacktestAgent",
-            session_id="BacktestSession2025"
+        # Format results as ASSISTANT message
+        results_message = f"Backtest result: {json.dumps(results)}"
+        
+        # Create event using memory_client.create_event
+        event = memory_client.create_event(
+            memory_id=_memory_id,
+            actor_id=_actor_id,
+            session_id=_session_id,
+            messages=[(results_message, "ASSISTANT")]
         )
         
-        # Create conversational message for semantic storage
-        message = ConversationalMessage(
-            role=MessageRole.ASSISTANT,
-            content=f"Backtest results for {symbol}: {json.dumps(results)}"
-        )
-        
-        # Add message to semantic memory
-        session_manager.add_message(message)
-        
-        print(f"✅ Backtest results saved to AgentCore Memory using semantic strategy")
+        print(f"✅ Backtest results saved to AgentCore Memory")
         
     except Exception as e:
         print(f"❌ Failed to save backtest results to AgentCore Memory: {e}")
@@ -240,41 +188,49 @@ def save_backtest_results_to_memory_sync(results: Dict[str, Any]):
         traceback.print_exc()
 
 def get_backtest_results_from_memory(symbol: str = None) -> Dict[str, Any]:
-    """Retrieve backtest results from AgentCore Memory using MemorySessionManager"""
+    """Retrieve backtest results from AgentCore Memory using list_events"""
     try:
-        memory = initialize_agentcore_memory()
-        if memory is None:
-            print("⚠️ AgentCore Memory not available")
-            return None
+        # print(f"🔍 Retrieving backtest results from AgentCore Memory...")
         
-        memory_id = memory.get('id')
-        print(f"🔍 Retrieving backtest results from AgentCore Memory...")
-        
-        # Use MemorySessionManager for semantic memory retrieval
-        session_manager = MemorySessionManager(
-            memory_id=memory_id,
-            actor_id="BacktestAgent",
-            session_id="BacktestSession2025"
+        # List events using memory_client
+        events = memory_client.list_events(
+            memory_id=_memory_id,
+            actor_id=_actor_id,
+            session_id=_session_id
         )
-        
-        # Get conversation history (messages stored in this session)
-        messages = session_manager.get_messages()
         
         # Find the most recent backtest results message
         latest_result = None
-        for message in reversed(messages):  # Start from most recent
-            if message.content and 'Backtest results for' in message.content:
-                # Check if this is for the requested symbol (if specified)
-                if symbol is None or f'Backtest results for {symbol.upper()}:' in message.content:
-                    try:
-                        # Extract JSON data from the message content
-                        if ':' in message.content:
-                            json_part = message.content.split(':', 1)[1].strip()
-                            latest_result = json.loads(json_part)
-                            break
-                    except Exception as e:
-                        print(f"⚠️ Error parsing backtest results from message: {e}")
-                        continue
+        
+        # Handle both list and dict response formats
+        if isinstance(events, dict):
+            events_list = events.get('events', [])
+        elif isinstance(events, list):
+            events_list = events
+        else:
+            events_list = []
+        
+        for event in reversed(events_list):  # Start from most recent
+            try:
+                # Get messages from event
+                messages = event.get('messages', [])
+                for msg in messages:
+                    content = msg.get('content', '') if isinstance(msg, dict) else str(msg)
+                    
+                    if 'Backtest result:' in content:
+                        # Check if this is for the requested symbol (if specified)
+                        if symbol is None or f'"symbol": "{symbol.upper()}"' in content:
+                            # Extract JSON data from the message content
+                            if ':' in content:
+                                json_part = content.split(':', 1)[1].strip()
+                                latest_result = json.loads(json_part)
+                                break
+            except Exception as e:
+                print(f"⚠️ Error parsing event: {e}")
+                continue
+            
+            if latest_result:
+                break
         
         if latest_result:
             print(f"✅ Found backtest results in AgentCore Memory")
@@ -524,6 +480,10 @@ def generate_trading_strategy(query: str) -> str:
     global _strategy_call_count
 
     agent_name = "🧠 STRATEGY GENERATOR AGENT"
+    print("\n" + "="*50)
+    print(agent_name)
+    print("="*50)
+
     input_data = query
     reasoning = "Converting user trading idea into executable strategy code..."
     
@@ -546,7 +506,7 @@ def generate_trading_strategy(query: str) -> str:
         processing_time = time.time() - start_time
         
         print(f"⏱️ Strategy generation completed in {processing_time:.2f} seconds")
-        print(f"📤 Generated backtrader strategy code: {result}")
+        # print(f"📤 Generated backtrader strategy code: {result}")
         
         # Ensure we have a valid result before proceeding
         if not result or len(str(result).strip()) < 50:
@@ -727,102 +687,62 @@ def run_backtest(symbol: str, strategy_code: str, params: dict = None) -> dict:
     
     # Save backtest results to AgentCore Memory
     if 'error' not in result:
-        print("💾 Saving backtest results to AgentCore Memory...")
+        # print("💾 Saving backtest results to AgentCore Memory...")
         save_backtest_results_to_memory_sync(result)
     
     print("="*50)
     return result
 
+results_agent = ResultsSummaryAgent()
 
 @tool
-def create_results_summary(backtest_results: Dict[str, Any] = None) -> Dict[str, Any]:
+def create_results_summary(backtest_results: dict)  -> str:
     """
-    Strands Tool: Create comprehensive results summary.
-    This tool waits synchronously for completion before returning.
-    Reads backtest results from AgentCore Memory if not provided.
-    
+    Analyze backtest performance and generate comprehensive trading strategy report.
+
     Args:
-        backtest_results: Results from backtest tool (optional - will read from memory)
-    
+        backtest_results: Dictionary containing backtest metrics and performance data
+
     Returns:
-        Formatted results summary with performance categorization
+        Formatted analysis report with key statistics and performance assessment
     """
+    agent_name = "📈 RESULTS SUMMARY AGENT"    
+    print("\n" + "="*50)
+    print(agent_name)
+    print("="*50)
+    
     import time
-    
-    print(f"� Resultsr Tool: Processing results...")
-    
+    start_time = time.time()
+
     # If no backtest results provided, read from AgentCore Memory
     if backtest_results is None:
         print(f"📖 No backtest results provided, reading from AgentCore Memory...")
         backtest_results = get_backtest_results_from_memory()
-        
         if backtest_results is None:
-            return {
-                'status': 'error',
-                'message': 'No backtest results found in AgentCore Memory',
-                'timestamp': datetime.now().isoformat()
-            }
+            return 'No backtest results found in AgentCore Memory'
     
     print(f"💾 AgentCore Memory: Processing stored results...")
-    print("⏳ Creating results summary (synchronous)...")
-    
-    start_time = time.time()
     
     if 'error' in backtest_results:
-        return {
-            'status': 'error',
-            'message': backtest_results['error'],
-            'timestamp': datetime.now().isoformat()
-        }
-    
+        return f'Results in backtesting: {backtest_results['error']}'
+
     try:
-        total_return = backtest_results.get('total_return_pct', 0)
-        final_value = backtest_results.get('final_value', 0)
-        initial_value = backtest_results.get('initial_value', 0)
-        symbol = backtest_results.get('symbol', 'Unknown')
+        input_data = f"{list(backtest_results.keys()) if isinstance(backtest_results, dict) else 'Invalid format'}"
+        reasoning = "Analyzing backtest performance and generating summary..."
         
-        # Categorize performance
-        if total_return >= 20:
-            performance = {'category': 'Excellent', 'emoji': '🚀'}
-        elif total_return >= 10:
-            performance = {'category': 'Good', 'emoji': '✅'}
-        elif total_return >= 0:
-            performance = {'category': 'Positive', 'emoji': '📈'}
-        elif total_return >= -10:
-            performance = {'category': 'Minor Loss', 'emoji': '⚠️'}
-        else:
-            performance = {'category': 'Significant Loss', 'emoji': '❌'}
+        print(f"📥 INPUT: {input_data}")
+        print(f"🧠 REASONING: {reasoning}")
         
-        summary = {
-            'status': 'success',
-            'timestamp': datetime.now().isoformat(),
-            'strategy_performance': {
-                'symbol_traded': symbol,
-                'initial_investment': f"${initial_value:,.2f}",
-                'final_value': f"${final_value:,.2f}",
-                'total_return_percentage': f"{total_return:.2f}%",
-                'total_return_amount': f"${backtest_results.get('total_return_amount', 0):,.2f}",
-                'performance_category': performance['category'],
-                'performance_emoji': performance['emoji']
-            },
-            'risk_metrics': {
-                'max_drawdown': f"{backtest_results.get('max_drawdown_pct', 0):.2f}%",
-                'sharpe_ratio': backtest_results.get('sharpe_ratio', 0),
-                'total_trades': backtest_results.get('total_trades', 0)
-            },
-            'agentcore_demo': {
-                'services_demonstrated': [
-                    'AgentCore Runtime - Single agent execution',
-                    'AgentCore Memory - Results storage',
-                    'AgentCore Gateway - External tool integration',
-                    'Strands - Tool orchestration'
-                ]
-            }
-        }
+        result = results_agent.process(backtest_results)
         
+        print(f"📤 OUTPUT: {result}")
+        
+        print("="*50)
+        return result
+
         processing_time = time.time() - start_time
         print(f"⏱️ Results summary completed in {processing_time:.2f} seconds")
-        print(f"✅ Results Tool: Summary created successfully")
+        # print(f"✅ Results Tool: Summary created successfully")
         
         # Brief pause to ensure completion
         time.sleep(0.5)
@@ -832,12 +752,7 @@ def create_results_summary(backtest_results: Dict[str, Any] = None) -> Dict[str,
     except Exception as e:
         processing_time = time.time() - start_time
         print(f"❌ Results summary failed after {processing_time:.2f} seconds: {e}")
-        return {
-            'status': 'error',
-            'message': f'Results processing failed: {str(e)}',
-            'timestamp': datetime.now().isoformat()
-        }
-
+        return f'Results processing failed: {str(e)}'
 
 
 
@@ -888,13 +803,8 @@ def invoke(payload, context=None):
     try:
         print(f"🚀 AgentCore Runtime: Backtesting Agent processing request")
         print(f"📥 Payload received: {payload}")
-        
-        # Always trigger the complete 4-step workflow regardless of input
-        user_message = """how is the strategy performance: 
-         {"name": "EMA Crossover Strategy", "stock_symbol": "AMZN", "backtest_window": "1Y", "max_positions": 1, "stop_loss": 5, "take_profit": 10, "buy_conditions": "EMA50 > EMA200", "sell_conditions": "EMA50 < EMA200"}
-        """
-        
-        result = quant_agent(user_message)
+
+        result = quant_agent(payload.get("prompt"))
         
         return {"result": result.message}
         
@@ -905,14 +815,25 @@ def invoke(payload, context=None):
         return {"result": {"status": "error", "error": str(e)}}
 
 if __name__ == "__main__":
-    print("🚀 Starting AgentCore Backtesting Agent...")
+    print("🚀 Starting Strands Multi-Agent Quant Backtesting Agent on AgentCore")
     print(f"   App type: {type(app)}")
     print(f"   App methods: {[m for m in dir(app) if not m.startswith('_')]}")
     
     # Test invoke function directly first
     print("\n🧪 Testing invoke function directly...")
     try:
-        test_payload = {"prompt": "Hello, test message"}
+        test_payload = {"prompt": """how is the strategy performance: 
+         {
+            "name": "EMA Crossover Strategy",
+            "stock_symbol": "AMZN",
+            "backtest_window": "1Y",
+            "max_positions": 1,
+            "stop_loss": 5,
+            "take_profit": 10,
+            "buy_conditions": "EMA10 > EMA30",
+            "sell_conditions": "EMA10 < EMA30"
+            }
+         """}
         result = invoke(test_payload)
         print(f"✅ Direct invoke test successful: {result}")
     except Exception as e:
