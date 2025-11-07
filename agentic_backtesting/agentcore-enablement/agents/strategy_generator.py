@@ -53,11 +53,9 @@ Requirements:
 5. Take profit: {config.get('take_profit', 'None')}% if specified
 
 
-Buy Conditions (ALL must be true):
-{self._format_conditions(config['buy_conditions'])}
+Buy Conditions : {config['buy_conditions']}
 
-Sell Conditions (ANY can trigger):
-{self._format_conditions(config['sell_conditions'])}
+Sell Conditions : {config['sell_conditions']}
 
 Example RSI strategy code:
 ```python

@@ -5,14 +5,13 @@ Backtest Agent - Executes backtests using generated strategies
 import backtrader as bt
 import pandas as pd
 from io import StringIO
-from .base_agent import BaseAgent
 from typing import Dict, Any
 
-class BacktestAgent(BaseAgent):
-    """Agent that executes backtests using Backtrader"""
+class BacktestTool():
+    """Tool that executes backtests using Backtrader"""
     
     def __init__(self):
-        super().__init__("Backtest")
+        pass
         self.default_params = {
             'initial_cash': 100000,
             'commission': 0.001,

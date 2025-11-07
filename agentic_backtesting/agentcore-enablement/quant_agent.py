@@ -20,6 +20,7 @@ print(f"   AWS_REGION: {os.getenv('AWS_REGION', 'Not set')}")
 print(f"   DEBUG: {os.getenv('DEBUG', 'Not set')}")
 
 from bedrock_agentcore import BedrockAgentCoreApp
+from bedrock_agentcore.memory import MemoryClient
 from strands import Agent, tool
 import pandas as pd
 import numpy as np
@@ -35,15 +36,315 @@ from datetime import datetime, timedelta
 from typing import Dict, Any
 
 from agents.strategy_generator import StrategyGeneratorAgent
+from agents.backtest import BacktestTool
 
 # Initialize the AgentCore app
 app = BedrockAgentCoreApp()
 
-# Global workflow memory for AgentCore Memory demonstration
-workflow_memory = {}
+# Initialize AgentCore Memory Client
+memory_client = MemoryClient(region_name="us-east-1")
+
+# Global memory instance for market data storage
+agentcore_memory = None
+
+# Global storage for market data
+_stored_market_data = {}
+
+def initialize_agentcore_memory():
+    """Initialize AgentCore Memory for market data storage"""
+    global agentcore_memory
+    try:
+        if agentcore_memory is None:
+            print("🧠 Initializing AgentCore Memory...")
+            
+            # First, try to list existing memories to see if one already exists
+            try:
+                memories = memory_client.list_memories()
+                existing_memory = None
+                
+                # Look for existing memory with our name
+                for memory in memories.get('memories', []):
+                    if memory.get('name') == 'QuantAgentMemory':
+                        existing_memory = memory
+                        print(f"📋 Found existing AgentCore Memory: {memory.get('id')}")
+                        break
+                
+                if existing_memory:
+                    agentcore_memory = existing_memory
+                    print(f"✅ Using existing AgentCore Memory with ID: {agentcore_memory.get('id')}")
+                else:
+                    # Create new memory if none exists
+                    print("🆕 Creating new AgentCore Memory...")
+                    agentcore_memory = memory_client.create_memory(
+                        name="QuantAgentMemory",
+                        description="Memory for storing backtest information for the Quant Agent"
+                    )
+                    print(f"✅ AgentCore Memory created with ID: {agentcore_memory.get('id')}")
+                    
+            except Exception as list_error:
+                print(f"⚠️ Could not list memories: {list_error}")
+                # Fallback: try to create directly
+                agentcore_memory = memory_client.create_memory(
+                    name="QuantAgentMemory",
+                    description="Memory for storing backtest information for the Quant Agent"
+                )
+                print(f"✅ AgentCore Memory created with ID: {agentcore_memory.get('id')}")
+                
+        return agentcore_memory
+    except Exception as e:
+        print(f"❌ Failed to initialize AgentCore Memory: {e}")
+        return None
+
+def extract_market_data_from_gateway_response(gateway_response: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract and transform market data from AgentCore Gateway JSON-RPC response.
+    sample: {"jsonrpc":"2.0","id":1,"result":{"isError":false,"content":[{"type":"text","text":"{\"statusCode\":200,\"body\":\"{\\\"success\\\": true, \\\"metadata\\\": {\\\"symbol\\\": \\\"AMZN\\\", \\\"total_rows\\\": 100, \\\"columns\\\": [\\\"date\\\", \\\"symbol\\\", \\\"open_price\\\", \\\"high_price\\\", \\\"low_price\\\", \\\"close_price\\\", \\\"volume\\\", \\\"adj_close\\\"]}, \\\"data\\\": [{\\\"date\\\": \\\"2000-01-03\\\", \\\"symbol\\\": \\\"AMZN\\\", \\\"open_price\\\": 4.074999809265137, \\\"high_price\\\": 4.478125095367432, \\\"low_price\\\": 3.9523439407348633, \\\"close_price\\\": 4.46875, \\\"volume\\\": 322352000, \\\"adj_close\\\": 4.46875}, {\\\"date\\\": \\\"2000-01-04\\\", \\\"symbol\\\": \\\"AMZN\\\", \\\"open_price\\\": 4.268750190734863, \\\"high_price\\\": 4.574999809265137, \\\"low_price\\\": 4.087500095367432, \\\"close_price\\\": 4.096875190734863, \\\"volume\\\": 349748000, \\\"adj_close\\\": 4.096875190734863}, {\\\"date\\\": \\\"2025-06-03\\\", \\\"symbol\\\": \\\"AMZN\\\", \\\"open_price\\\": 207.11000061035156, \\\"high_price\\\": 208.9499969482422, \\\"low_price\\\": 205.02999877929688, \\\"close_price\\\": 205.7100067138672, \\\"volume\\\": 33139100, \\\"adj_close\\\": 205.7100067138672}, {\\\"date\\\": \\\"2025-06-04\\\", \\\"symbol\\\": \\\"AMZN\\\", \\\"open_price\\\": 206.5500030517578, \\\"high_price\\\": 208.17999267578125, \\\"low_price\\\": 205.17999267578125, \\\"close_price\\\": 207.22999572753906, \\\"volume\\\": 29866400, \\\"adj_close\\\": 207.22999572753906}]}\",\"headers\":{\"Content-Type\":\"application/json\"}}"}]}}
+    
+    Handles the hierarchy: result -> content -> text -> body -> data
+    Transforms field names for Backtrader compatibility:
+    - open_price -> open
+    - high_price -> high  
+    - low_price -> low
+    - close_price -> close
+    - adj_close -> adj_close (kept as is)
+    - volume -> volume (kept as is)
+    
+    Args:
+        gateway_response: Raw JSON-RPC response from AgentCore Gateway
+        
+    Returns:
+        Structured market data ready for Backtrader
+    """
+    try:
+        print("🔍 Extracting market data from gateway response...")
+        
+        # Navigate through JSON-RPC hierarchy: result -> content -> text
+        result = gateway_response.get('result', {})
+        content = result.get('content', [])
+        
+        if not content or not isinstance(content, list):
+            raise ValueError("No content found in gateway response")
+        
+        # Extract text from first content item
+        text_content = content[0].get('text', '')
+        if not text_content:
+            raise ValueError("No text content found in gateway response")
+        
+        # Parse the nested JSON in text content
+        nested_data = json.loads(text_content)
+        
+        # Extract body from statusCode response
+        body_str = nested_data.get('body', '')
+        if not body_str:
+            raise ValueError("No body found in nested response")
+        
+        # Parse the body JSON
+        body_data = json.loads(body_str)
+        
+        # Verify success and extract data
+        if not body_data.get('success', False):
+            raise ValueError("Gateway response indicates failure")
+        
+        raw_data = body_data.get('data', [])
+        metadata = body_data.get('metadata', {})
+        
+        if not raw_data:
+            raise ValueError("No market data found in response")
+        
+        print(f"📊 Found {len(raw_data)} data points for {metadata.get('symbol', 'UNKNOWN')}")
+        
+        # Transform data for Backtrader compatibility
+        transformed_data = []
+        for item in raw_data:
+            transformed_item = {
+                'date': item.get('date'),
+                'symbol': item.get('symbol'),
+                'open': float(item.get('open_price', 0)),
+                'high': float(item.get('high_price', 0)),
+                'low': float(item.get('low_price', 0)),
+                'close': float(item.get('close_price', 0)),
+                'volume': int(item.get('volume', 0)),
+                'adj_close': float(item.get('adj_close', 0))
+            }
+            transformed_data.append(transformed_item)
+        
+        # Structure as symbol -> daily data mapping
+        symbol = metadata.get('symbol', 'UNKNOWN')
+        result_data = {
+            symbol: {
+                'daily_data': transformed_data,
+                'metadata': {
+                    'symbol': symbol,
+                    'total_rows': metadata.get('total_rows', len(transformed_data)),
+                    'columns': metadata.get('columns', []),
+                    'source': 'agentcore_gateway',
+                    'timestamp': datetime.now().isoformat()
+                }
+            }
+        }
+        
+        print(f"✅ Successfully extracted and transformed {len(transformed_data)} data points")
+        return result_data
+        
+    except Exception as e:
+        print(f"❌ Error extracting market data from gateway response: {e}")
+        # Return fallback structure
+        return {
+            'UNKNOWN': {
+                'daily_data': [],
+                'metadata': {
+                    'symbol': 'UNKNOWN',
+                    'total_rows': 0,
+                    'source': 'extraction_error',
+                    'error': str(e)
+                }
+            }
+        }
+
+async def save_backtest_results_to_memory(results: Dict[str, Any]):
+    """Save backtest results to AgentCore Memory using create_event"""
+    try:
+        memory = initialize_agentcore_memory()
+        if memory is None:
+            print("⚠️ AgentCore Memory not available, skipping save")
+            return
+        
+        memory_id = memory.get('id')
+        symbol = results.get('symbol', 'UNKNOWN')
+        print(f"💾 Saving backtest results for {symbol} to AgentCore Memory...")
+        
+        # Create backtest results payload message
+        backtest_payload = f"Backtest results for {symbol}: {json.dumps(results)}"
+        
+        # Create event using the correct AgentCore Memory API format
+        event = memory_client.create_event(
+            memory_id=memory_id,
+            actor_id="BacktestAgent",
+            session_id="BacktestSession2025",
+            messages=[(backtest_payload, "ASSISTANT")],
+            metadata={
+                "event_type": {"stringValue": "backtest_results"},
+                "symbol": {"stringValue": symbol.upper()},
+                "timestamp": {"stringValue": datetime.now().isoformat()},
+                "source": {"stringValue": "run_backtest_tool"}
+            }
+        )
+        
+        print(f"✅ Backtest results saved to AgentCore Memory - Event ID: {event.get('id')}")
+        
+    except Exception as e:
+        print(f"❌ Failed to save backtest results to AgentCore Memory: {e}")
+
+def save_backtest_results_to_memory_sync(results: Dict[str, Any]):
+    """Save backtest results to AgentCore Memory using create_event (synchronous version)"""
+    try:
+        memory = initialize_agentcore_memory()
+        if memory is None:
+            print("⚠️ AgentCore Memory not available, skipping save")
+            return
+        
+        memory_id = memory.get('id')
+        symbol = results.get('symbol', 'UNKNOWN')
+        print(f"💾 Saving backtest results for {symbol} to AgentCore Memory...")
+        
+        # Create backtest results payload message
+        backtest_payload = f"Backtest results for {symbol}: {json.dumps(results)}"
+        
+        # Create event using the correct AgentCore Memory API format
+        event = memory_client.create_event(
+            memory_id=memory_id,
+            actor_id="BacktestAgent",
+            session_id="BacktestSession2025",
+            messages=[(backtest_payload, "ASSISTANT")],
+            metadata={
+                "event_type": {"stringValue": "backtest_results"},
+                "symbol": {"stringValue": symbol.upper()},
+                "timestamp": {"stringValue": datetime.now().isoformat()},
+                "source": {"stringValue": "run_backtest_tool"}
+            }
+        )
+        
+        print(f"✅ Backtest results saved to AgentCore Memory - Event ID: {event.get('id')}")
+        
+    except Exception as e:
+        print(f"❌ Failed to save backtest results to AgentCore Memory: {e}")
+
+def get_backtest_results_from_memory(symbol: str = None) -> Dict[str, Any]:
+    """Retrieve backtest results from AgentCore Memory using list_events"""
+    try:
+        memory = initialize_agentcore_memory()
+        if memory is None:
+            print("⚠️ AgentCore Memory not available")
+            return None
+        
+        memory_id = memory.get('id')
+        print(f"🔍 Retrieving backtest results from AgentCore Memory...")
+        
+        # List events using the correct AgentCore Memory API format
+        events = memory_client.list_events(
+            memory_id=memory_id,
+            actor_id="BacktestAgent",
+            session_id="BacktestSession2025",
+            filter={
+                "eventMetadata": [{
+                    "left": {"metadataKey": "event_type"},
+                    "operator": "EQUALS_TO",
+                    "right": {"metadataValue": {"stringValue": "backtest_results"}}
+                }]
+            },
+            max_results=10,
+            include_payloads=True
+        )
+        
+        # Find the most recent backtest results (optionally for specific symbol)
+        latest_event = None
+        latest_timestamp = None
+        
+        for event in events.get('events', []):
+            try:
+                # Check if this event matches the symbol filter (if provided)
+                metadata = event.get('metadata', {})
+                event_symbol = metadata.get('symbol', {}).get('stringValue', '')
+                
+                if symbol is None or event_symbol == symbol.upper():
+                    event_timestamp_str = metadata.get('timestamp', {}).get('stringValue', '')
+                    if event_timestamp_str:
+                        event_timestamp = datetime.fromisoformat(event_timestamp_str)
+                        if latest_timestamp is None or event_timestamp > latest_timestamp:
+                            latest_event = event
+                            latest_timestamp = event_timestamp
+            except Exception as e:
+                print(f"⚠️ Error parsing backtest event: {e}")
+                continue
+        
+        if latest_event:
+            print(f"✅ Found backtest results in AgentCore Memory")
+            # Extract backtest results from the message payload
+            messages = latest_event.get('messages', [])
+            if messages:
+                message_content = messages[0].get('content', '')
+                # Parse the backtest results from the message content
+                try:
+                    # Extract JSON data from the message
+                    if 'Backtest results for' in message_content and ':' in message_content:
+                        json_part = message_content.split(':', 1)[1].strip()
+                        return json.loads(json_part)
+                except Exception as e:
+                    print(f"⚠️ Error parsing backtest results from message: {e}")
+            return None
+        else:
+            print(f"❌ No backtest results found in AgentCore Memory")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Failed to retrieve backtest results from AgentCore Memory: {e}")
+        return None
 
 # Global variables for strategy generation
 _strategy_call_count = 0
+
+# Global variable for storing market data
+_stored_market_data = {}
 
 def get_secret_hash(username: str, client_id: str, client_secret: str) -> str:
     """Generate secret hash for Cognito authentication"""
@@ -148,14 +449,10 @@ async def call_gateway_market_data_with_cognito(symbol: str, param_type: str = "
                 print(f"   Response Headers: {dict(response.headers)}")
                 print(f"   Response Length: {len(response_text)} characters")
                 print(f"   Content Type: {response.headers.get('content-type', 'Unknown')}")
-                print(f"📝 Raw Response Content:")
-                print(f"   {response_text}")
+                # print(f"📝 Raw Response Content:")
+                # print(f"   {response_text}")
                 
-                if response.status_code == 200:
-                    data = response.json()
-                    print(f"📋 Parsed JSON Response (Pretty Formatted):")
-                    print(f"{json.dumps(data, indent=2, default=str)}")
-                else:
+                if response.status_code != 200:
                     print(f"❌ Non-200 Status Code Response:")
                     print(f"   Status: {response.status_code}")
                     print(f"   Reason: {response.reason_phrase if hasattr(response, 'reason_phrase') else 'Unknown'}")
@@ -172,38 +469,15 @@ async def call_gateway_market_data_with_cognito(symbol: str, param_type: str = "
                 data = response.json()
                 print("✅ Successfully fetched data from AgentCore Gateway")
                 
-                # Handle JSON-RPC 2.0 response format
+                # Return the raw JSON-RPC response for proper extraction
                 if 'jsonrpc' in data:
                     if 'error' in data:
                         error_msg = data['error']
                         print(f"❌ Gateway returned error: {error_msg}")
                         raise Exception(f"Gateway error: {error_msg}")
-                    elif 'result' in data:
-                        result = data['result']
-                        # Extract market data from JSON-RPC result
-                        if isinstance(result, dict) and 'data' in result:
-                            return {
-                                'symbol': result.get('symbol', symbol),
-                                'data': result['data'],
-                                'total_rows': len(result['data']) if 'data' in result else 0,
-                                'source': 'agentcore_gateway'
-                            }
-                        else:
-                            return {
-                                'symbol': symbol,
-                                'data': result,
-                                'total_rows': len(result) if isinstance(result, list) else 0,
-                                'source': 'agentcore_gateway'
-                            }
-                # Handle legacy response format
-                elif data.get('success') and data.get('data'):
-                    metadata = data['metadata']
-                    market_data = data['data']
-                    return {
-                        'symbol': metadata.get('symbol', symbol),
-                        'total_rows': metadata.get('total_rows', 0),
-                        'source': 'agentcore_gateway'
-                    }
+                    else:
+                        # Return the complete response for extraction
+                        return data
                 else:
                     error_msg = data.get('error', 'Unknown error from gateway')
                     print(f"❌ Gateway returned error: {error_msg}")
@@ -245,54 +519,35 @@ def fetch_market_data_via_gateway(symbol: str = None, investment_area: str = Non
     start_time = time.time()
     
     try:
-        result = asyncio.run(call_gateway_market_data_with_cognito(target_param, param_type))
+        gateway_response = asyncio.run(call_gateway_market_data_with_cognito(target_param, param_type))
+        
+        # Extract structured data from gateway response
+        global _stored_market_data
+        _stored_market_data = extract_market_data_from_gateway_response(gateway_response)
+
         processing_time = time.time() - start_time
         print(f"⏱️ Market data fetch completed in {processing_time:.2f} seconds")
-        print("✅ Market data fetch successful")
         time.sleep(0.5)  # Brief pause to ensure completion
-        return result
+
+        # Extract metadata for detailed success message
+        symbol_key = list(_stored_market_data.keys())[0] if _stored_market_data else target_param
+        if symbol_key in _stored_market_data:
+            metadata = _stored_market_data[symbol_key].get('metadata', {})
+            total_rows = metadata.get('total_rows', 0)
+            columns = metadata.get('columns', [])
+            source = metadata.get('source', 'unknown')
+            timestamp = metadata.get('timestamp', 'unknown')
+            
+            columns_str = ', '.join(columns)
+            info = f"✅ Market data fetch successfully for {symbol_key} to have {total_rows} total_rows with columns [{columns_str}] from {source} at {timestamp}"
+            print(info)
+            return info
+
     except Exception as e:
         processing_time = time.time() - start_time
         print(f"❌ AgentCore Gateway: Failed to fetch via Gateway after {processing_time:.2f} seconds - {str(e)}")
-        print("⚠️ Using fallback data...")
-        # Return fallback data for demo purposes
-        result = generate_fallback_market_data(target_param)
-        print("✅ Fallback data generated")
-        time.sleep(0.5)  # Brief pause to ensure completion
-        return result
-
-def generate_fallback_market_data(symbol: str) -> Dict[str, Any]:
-    """Generate fallback market data when gateway is unavailable"""
-    print(f"⚠️ Using fallback data for {symbol}")
-    
-    # Generate realistic-looking sample data
-    import random
-    random.seed(hash(symbol) % 1000)  # Consistent data per symbol
-    
-    base_price = random.uniform(50, 300)
-    data_points = 252
-    
-    return {
-        'symbol': symbol.upper(),
-        'data_points': data_points,
-        'period_start': (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d'),
-        'period_end': datetime.now().strftime('%Y-%m-%d'),
-        'price_data': {
-            'initial_price': round(base_price, 2),
-            'final_price': round(base_price * random.uniform(0.8, 1.3), 2),
-            'min_price': round(base_price * random.uniform(0.7, 0.9), 2),
-            'max_price': round(base_price * random.uniform(1.1, 1.4), 2)
-        },
-        'statistics': {
-            'total_return_pct': round(random.uniform(-20, 30), 2),
-            'avg_daily_volume': random.randint(1000000, 50000000)
-        },
-        'technical_indicators': {
-            'current_sma_20': round(base_price * random.uniform(0.95, 1.05), 2),
-            'current_sma_50': round(base_price * random.uniform(0.90, 1.10), 2)
-        },
-        'source': 'fallback_data'
-    }
+        
+    return "Failed to get market data"
 
 strategy_agent = StrategyGeneratorAgent()
 
@@ -365,84 +620,138 @@ def generate_trading_strategy(query: str) -> str:
         raise
 
 
+backtest_tool = BacktestTool()
+
 @tool
-def run_backtest(strategy_code: str, market_data: Dict[str, Any], initial_investment: float) -> Dict[str, Any]:
+def run_backtest(symbol: str, strategy_code: str, params: dict = None) -> dict:
     """
-    Strands Tool: Execute backtesting simulation.
-    This tool waits synchronously for completion before returning.
-    
+    Execute trading strategy backtest using historical market data.
+    Reads market data from AgentCore Memory and saves results back to memory.
+
     Args:
-        strategy_code: Generated Python strategy code
-        market_data: Market data from Gateway or fallback
-        initial_investment: Initial investment amount
-    
+        symbol: the strategy equity code, default AMZN
+        strategy_code: Complete Backtrader strategy code from strategy_generator
+        params: Optional backtest parameters (cash, commission, etc.)
+
     Returns:
-        Backtest results with performance metrics
+        Comprehensive backtest results with performance metrics and statistics
     """
     import time
     
-    print(f"⚡ Backtest Tool: Executing simulation...")
-    print(f"   Initial investment: ${initial_investment:,.2f}")
-    print("⏳ Running backtest simulation (synchronous)...")
+    agent_name = "⚡ BACKTEST AGENT"
+    print("\n" + "="*50)
+    print(agent_name)
+    print("="*50)
+
+    # Validate strategy code
+    if not strategy_code or len(strategy_code.strip()) < 100:
+        print("❌ ERROR: Invalid or empty strategy code")
+        return {'error': 'Invalid or empty strategy code'}
     
+    global _stored_market_data
+    
+    # Check if market data is available
+    if _stored_market_data is None or not _stored_market_data:
+        print("⚠️ No market data found in global storage")
+        return {'error': 'No market data found in global storage'}
+    
+    # Extract the first symbol's data (assuming single symbol for now)
+    symbol_key = symbol
+    symbol_data = _stored_market_data[symbol_key]
+    
+    # Get the transformed daily data
+    daily_data = symbol_data.get('daily_data', [])
+    
+    if not daily_data:
+        print("❌ NO MARKET DATA AVAILABLE - Cannot run backtest")
+        return {'error': 'No market data available for backtesting'}
+    
+    print(f"📊 Using {len(daily_data)} data points for {symbol_key}")
+    
+    # Convert transformed_data to pandas DataFrame for Backtrader
+    # The daily_data already has the correct column names: date, symbol, open, high, low, close, volume, adj_close
+    df = pd.DataFrame(daily_data)
+    
+    # Convert date column to datetime and set as index
+    df['date'] = pd.to_datetime(df['date'])
+    df.set_index('date', inplace=True)
+    
+    # Ensure numeric columns are properly typed for Backtrader
+    numeric_columns = ['open', 'high', 'low', 'close', 'volume', 'adj_close']
+    for col in numeric_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    print(f"📈 DataFrame created with columns: {list(df.columns)}")
+    print(f"📅 Date range: {df.index.min()} to {df.index.max()}")
+    
+    # Print all dates in the DataFrame
+    print(f"📆 All dates in DataFrame ({len(df.index)} total):")
+    for i, date in enumerate(df.index):
+        if i < 1000:  # Show first 10 dates
+            print(f"   {i+1:3d}: {date.strftime('%Y-%m-%d')}")
+        elif i == 1000:
+            print(f"   ... (showing first 10 and last 10 of {len(df.index)} dates)")
+        elif i >= len(df.index) - 10:  # Show last 10 dates
+            print(f"   {i+1:3d}: {date.strftime('%Y-%m-%d')}")
+    
+    # Prepare backtest input
+    backtest_input = {
+        'strategy_code': strategy_code,
+        'market_data': {symbol_key: df},  # Pass DataFrame for Backtrader
+        'params': params or {'initial_cash': 100000, 'commission': 0.001}
+    }
+    
+    print(f"📥 INPUT: strategy_code length: {len(strategy_code)}, symbol: {symbol_key}, rows: {len(daily_data)}")
+    print(f"🧠 REASONING: Running strategy backtest with historical data...")
+    
+    # Execute backtest
     start_time = time.time()
+    result = backtest_tool.process(backtest_input)
+    processing_time = time.time() - start_time
     
-    try:
-        symbol = market_data.get('symbol', 'DEMO')
-        
-        # Simulate realistic backtest results
-        import random
-        random.seed(42)  # Consistent results for demo
-        
-        total_return_pct = random.uniform(-15, 25)
-        final_value = initial_investment * (1 + total_return_pct / 100)
-        max_drawdown = random.uniform(5, 20)
-        sharpe_ratio = random.uniform(0.5, 2.0)
-        total_trades = random.randint(10, 50)
-        
-        results = {
-            'symbol': symbol,
-            'strategy_name': 'UserStrategy',
-            'initial_value': round(initial_investment, 2),
-            'final_value': round(final_value, 2),
-            'total_return_pct': round(total_return_pct, 2),
-            'total_return_amount': round(final_value - initial_investment, 2),
-            'max_drawdown_pct': round(max_drawdown, 2),
-            'sharpe_ratio': round(sharpe_ratio, 2),
-            'total_trades': total_trades,
-            'data_points': market_data.get('data_points', 252)
-        }
-        
-        processing_time = time.time() - start_time
-        print(f"⏱️ Backtest completed in {processing_time:.2f} seconds")
-        print(f"✅ Backtest Tool: Completed - {total_return_pct:.2f}% return")
-        
-        # Brief pause to ensure completion
-        time.sleep(0.5)
-        
-        return results
-        
-    except Exception as e:
-        processing_time = time.time() - start_time
-        print(f"❌ Backtest failed after {processing_time:.2f} seconds: {e}")
-        return {'error': f'Backtest execution failed: {str(e)}'}
+    print(f"⏱️ Backtest completed in {processing_time:.2f} seconds")
+    print(f"📤 OUTPUT: {result}")
+    
+    # Save backtest results to AgentCore Memory
+    if 'error' not in result:
+        print("💾 Saving backtest results to AgentCore Memory...")
+        save_backtest_results_to_memory_sync(result)
+    
+    print("="*50)
+    return result
+
 
 @tool
-def create_results_summary(backtest_results: Dict[str, Any]) -> Dict[str, Any]:
+def create_results_summary(backtest_results: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Strands Tool: Create comprehensive results summary.
     This tool waits synchronously for completion before returning.
+    Reads backtest results from AgentCore Memory if not provided.
     
     Args:
-        backtest_results: Results from backtest tool
+        backtest_results: Results from backtest tool (optional - will read from memory)
     
     Returns:
         Formatted results summary with performance categorization
     """
     import time
     
-    print(f"📊 Results Tool: Processing results...")
-    print(f"💾 AgentCore Memory: Storing results...")
+    print(f"� Resultsr Tool: Processing results...")
+    
+    # If no backtest results provided, read from AgentCore Memory
+    if backtest_results is None:
+        print(f"📖 No backtest results provided, reading from AgentCore Memory...")
+        backtest_results = get_backtest_results_from_memory()
+        
+        if backtest_results is None:
+            return {
+                'status': 'error',
+                'message': 'No backtest results found in AgentCore Memory',
+                'timestamp': datetime.now().isoformat()
+            }
+    
+    print(f"💾 AgentCore Memory: Processing stored results...")
     print("⏳ Creating results summary (synchronous)...")
     
     start_time = time.time()
