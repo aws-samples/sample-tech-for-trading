@@ -4,6 +4,7 @@ Results Summary Agent - Analyzes and summarizes backtest results
 
 from .base_agent import BaseAgent
 from typing import Dict, Any
+from strands.models import BedrockModel
 
 class ResultsSummaryAgent(BaseAgent):
     """Agent that analyzes backtest results and provides summaries"""
@@ -65,7 +66,14 @@ class ResultsSummaryAgent(BaseAgent):
 When the user provides results, ask clarifying questions if needed, then deliver your analysis with the authority and insight of a senior quant reviewing a junior trader's work.
          """
          
-         super().__init__("ResultsSummary", instructions)
+         # Create a BedrockModel
+         nova_model = BedrockModel(
+            model_id="us.amazon.nova-pro-v1:0",
+            region_name="us-east-1",
+            temperature=0.3,
+         )
+         
+         super().__init__("ResultsSummary", instructions, nova_model)
     
 
     

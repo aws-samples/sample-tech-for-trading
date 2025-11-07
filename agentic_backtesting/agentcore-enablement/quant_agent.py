@@ -735,26 +735,19 @@ def create_results_summary(backtest_results: dict)  -> str:
         
         result = results_agent.process(backtest_results)
         
-        print(f"📤 OUTPUT: {result}")
-        
-        print("="*50)
-        return result
+        # print(f"📤 OUTPUT: {result}")
 
         processing_time = time.time() - start_time
         print(f"⏱️ Results summary completed in {processing_time:.2f} seconds")
-        # print(f"✅ Results Tool: Summary created successfully")
         
         # Brief pause to ensure completion
         time.sleep(0.5)
-        
-        return summary
+        return result
         
     except Exception as e:
         processing_time = time.time() - start_time
         print(f"❌ Results summary failed after {processing_time:.2f} seconds: {e}")
         return f'Results processing failed: {str(e)}'
-
-
 
 # Create the agent with all Strands tools
 quant_agent = Agent(

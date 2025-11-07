@@ -5,6 +5,7 @@ Strategy Generator Agent - Converts JSON strategy config to executable Backtrade
 from .base_agent import BaseAgent
 import json
 from typing import Dict, Any, Union
+from strands.models import BedrockModel
 
 class StrategyGeneratorAgent(BaseAgent):
     """Agent that generates Backtrader strategy code from JSON configuration"""
@@ -20,7 +21,15 @@ Generate clean, efficient Backtrader strategy code that:
 
 Always return complete, runnable Python code with proper imports and class structure."""
         
-        super().__init__("StrategyGenerator", instructions)
+
+        # Create a BedrockModel
+        claude_model = BedrockModel(
+            model_id="us.anthropic.claude-sonnet-4-20250514-v1:0",
+            region_name="us-east-1",
+            temperature=0.3,
+        )
+
+        super().__init__("StrategyGenerator", instructions, claude_model)
     
 
     def process(self, input_data: Union[str, Dict]) -> str:
