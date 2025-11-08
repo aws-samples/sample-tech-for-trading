@@ -11,13 +11,30 @@ os.environ["BYPASS_TOOL_CONSENT"] = "true"
 from dotenv import load_dotenv
 load_dotenv()
 
+# Set environment variables explicitly for AgentCore runtime
+os.environ.update({
+    'AGENTCORE_GATEWAY_URL': 'https://market-data-mcp-gateway-lryjsuyell.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp',
+    'STRATEGY_GENERATOR_RUNTIME_ARN': 'arn:aws:bedrock-agentcore:us-east-1:600627331406:runtime/strategy_generator-XJMGBxAgBL',
+    'BACKTEST_SUMMARY_RUNTIME_ARN': 'arn:aws:bedrock-agentcore:us-east-1:600627331406:runtime/results_summary-zug3B14PlT',
+    'COGNITO_USER_POOL_ID': 'us-east-1_eAn2oP0lv',
+    'COGNITO_CLIENT_ID': '5jajojm4ullslg0cqu98ffcfaa',
+    'COGNITO_CLIENT_SECRET': 'c1n9f62buh5vu8dlpt9ras6qeggn2agpr52inmnulunp18ke1av',
+    'COGNITO_USERNAME': 'mcp-test-user',
+    'COGNITO_PASSWORD': 'TempPass123!',
+    'AWS_REGION': 'us-east-1',
+    'AWS_DEFAULT_REGION': 'us-east-1',
+    'DEBUG': 'true',
+    'BYPASS_TOOL_CONSENT': 'true'
+})
+
 # Verify environment variables are loaded
-# print("🔧 Environment Variables Loaded:")
-# print(f"   AGENTCORE_GATEWAY_URL: {os.getenv('AGENTCORE_GATEWAY_URL', 'Not set')}")
-# print(f"   COGNITO_USER_POOL_ID: {os.getenv('COGNITO_USER_POOL_ID', 'Not set')}")
-# print(f"   COGNITO_CLIENT_ID: {os.getenv('COGNITO_CLIENT_ID', 'Not set')[:10]}..." if os.getenv('COGNITO_CLIENT_ID') else "   COGNITO_CLIENT_ID: Not set")
-# print(f"   AWS_REGION: {os.getenv('AWS_REGION', 'Not set')}")
-# print(f"   DEBUG: {os.getenv('DEBUG', 'Not set')}")
+print("🔧 Environment Variables Loaded:")
+print(f"   AGENTCORE_GATEWAY_URL: {os.getenv('AGENTCORE_GATEWAY_URL', 'Not set')}")
+print(f"   STRATEGY_GENERATOR_RUNTIME_ARN: {os.getenv('STRATEGY_GENERATOR_RUNTIME_ARN', 'Not set')}")
+print(f"   COGNITO_USER_POOL_ID: {os.getenv('COGNITO_USER_POOL_ID', 'Not set')}")
+print(f"   COGNITO_CLIENT_ID: {os.getenv('COGNITO_CLIENT_ID', 'Not set')[:10]}..." if os.getenv('COGNITO_CLIENT_ID') else "   COGNITO_CLIENT_ID: Not set")
+print(f"   AWS_REGION: {os.getenv('AWS_REGION', 'Not set')}")
+print(f"   DEBUG: {os.getenv('DEBUG', 'Not set')}")
 
 from bedrock_agentcore import BedrockAgentCoreApp
 from bedrock_agentcore.memory import MemoryClient
@@ -501,7 +518,7 @@ def generate_trading_strategy(query: str) -> str:
     
     try:
         # Call strategy agent and wait for completion
-        result =agentcore_runtime_client.invoke_agent_runtime(
+        result = agentcore_runtime_client.invoke_agent_runtime(
             agentRuntimeArn=os.getenv('STRATEGY_GENERATOR_RUNTIME_ARN'),
             runtimeSessionId=str(uuid.uuid4()),  # Unique session ID
             payload=json.dumps(input_data).encode('utf-8'),
@@ -512,13 +529,29 @@ def generate_trading_strategy(query: str) -> str:
         processing_time = time.time() - start_time
         
         print(f"⏱️ Strategy generation completed in {processing_time:.2f} seconds")
-        # print(f"📤 Generated backtrader strategy code: {result}")
+        
+        # Parse the AgentCore runtime response
+        if 'body' in result:
+            # Decode the response body
+            response_body = result['body'].read().decode('utf-8')
+            response_data = json.loads(response_body)
+            
+            # Extract the actual result from the nested structure
+            if 'result' in response_data and 'content' in response_data['result']:
+                content = response_data['result']['content']
+                if isinstance(content, list) and len(content) > 0:
+                    strategy_code = content[0].get('text', '')
+                else:
+                    strategy_code = str(content)
+            else:
+                strategy_code = response_body
+        else:
+            strategy_code = str(result)
         
         # Ensure we have a valid result before proceeding
-        if not result or len(str(result).strip()) < 50:
-            print("⚠️ Strategy generation returned insufficient content, retrying...")
-            time.sleep(2)  # Brief wait before retry
-            result = strategy_agent.process(query)
+        if not strategy_code or len(str(strategy_code).strip()) < 50:
+            print("⚠️ Strategy generation returned insufficient content")
+            return "Error: Strategy generation failed - insufficient content returned"
             
         print("✅ Strategy generation completed successfully")
         print("="*50)
@@ -526,7 +559,7 @@ def generate_trading_strategy(query: str) -> str:
         # Add a small delay to ensure completion
         time.sleep(1)
         
-        return result
+        return strategy_code
         
     except Exception as e:
         processing_time = time.time() - start_time
@@ -744,14 +777,30 @@ def create_results_summary(backtest_results: dict)  -> str:
             qualifier="DEFAULT"                  # Optional; version/endpoint control
         )
         
-        # print(f"📤 OUTPUT: {result}")
+        # Parse the AgentCore runtime response
+        if 'body' in result:
+            # Decode the response body
+            response_body = result['body'].read().decode('utf-8')
+            response_data = json.loads(response_body)
+            
+            # Extract the actual result from the nested structure
+            if 'result' in response_data and 'content' in response_data['result']:
+                content = response_data['result']['content']
+                if isinstance(content, list) and len(content) > 0:
+                    summary_text = content[0].get('text', '')
+                else:
+                    summary_text = str(content)
+            else:
+                summary_text = response_body
+        else:
+            summary_text = str(result)
 
         processing_time = time.time() - start_time
         print(f"⏱️ Results summary completed in {processing_time:.2f} seconds")
         
         # Brief pause to ensure completion
         time.sleep(0.5)
-        return result
+        return summary_text
         
     except Exception as e:
         processing_time = time.time() - start_time

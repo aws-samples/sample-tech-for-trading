@@ -30,7 +30,7 @@ agents:
     bedrock_agentcore:
       agent_id: quant_agent-D6li6lBv47
       agent_arn: arn:aws:bedrock-agentcore:us-east-1:600627331406:runtime/quant_agent-D6li6lBv47
-      agent_session_id: 6cfd06e3-b96c-4ce8-b5cd-b8c746703a85
+      agent_session_id: e4e96e20-98e7-402f-beaf-7cc4bff09be0
     codebuild:
       project_name: null
       execution_role: null
