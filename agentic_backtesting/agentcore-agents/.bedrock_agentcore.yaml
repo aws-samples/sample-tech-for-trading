@@ -1,0 +1,94 @@
+default_agent: results_summary
+agents:
+  strategy_generator:
+    name: strategy_generator
+    entrypoint: /Users/awsjacky/Library/CloudStorage/WorkDocsDrive-Documents/projects/sample-tech-for-trading/agentic_backtesting/agentcore-agents/strategy_generator.py
+    deployment_type: direct_code_deploy
+    runtime_type: PYTHON_3_13
+    platform: linux/arm64
+    container_runtime: null
+    source_path: /Users/awsjacky/Library/CloudStorage/WorkDocsDrive-Documents/projects/sample-tech-for-trading/agentic_backtesting/agentcore-agents
+    aws:
+      execution_role: arn:aws:iam::600627331406:role/AmazonBedrockAgentCoreSDKRuntime-us-east-1-ea2fbeaa7d
+      execution_role_auto_create: false
+      account: '600627331406'
+      region: us-east-1
+      ecr_repository: null
+      ecr_auto_create: false
+      s3_path: s3://bedrock-agentcore-codebuild-sources-600627331406-us-east-1
+      s3_auto_create: false
+      network_configuration:
+        network_mode: PUBLIC
+        network_mode_config: null
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+      lifecycle_configuration:
+        idle_runtime_session_timeout: null
+        max_lifetime: null
+    bedrock_agentcore:
+      agent_id: strategy_generator-XJMGBxAgBL
+      agent_arn: arn:aws:bedrock-agentcore:us-east-1:600627331406:runtime/strategy_generator-XJMGBxAgBL
+      agent_session_id: ffe0a6bf-faa3-457f-ae4a-0f3617f1c865
+    codebuild:
+      project_name: null
+      execution_role: null
+      source_bucket: null
+    memory:
+      mode: STM_ONLY
+      memory_id: strategy_generator_mem-peaLXUBqpH
+      memory_arn: arn:aws:bedrock-agentcore:us-east-1:600627331406:memory/strategy_generator_mem-peaLXUBqpH
+      memory_name: strategy_generator_mem
+      event_expiry_days: 30
+      first_invoke_memory_check_done: true
+      was_created_by_toolkit: true
+    authorizer_configuration: null
+    request_header_configuration: null
+    oauth_configuration: null
+  results_summary:
+    name: results_summary
+    entrypoint: /Users/awsjacky/Library/CloudStorage/WorkDocsDrive-Documents/projects/sample-tech-for-trading/agentic_backtesting/agentcore-agents/results_summary.py
+    deployment_type: direct_code_deploy
+    runtime_type: PYTHON_3_13
+    platform: linux/arm64
+    container_runtime: null
+    source_path: /Users/awsjacky/Library/CloudStorage/WorkDocsDrive-Documents/projects/sample-tech-for-trading/agentic_backtesting/agentcore-agents
+    aws:
+      execution_role: arn:aws:iam::600627331406:role/AmazonBedrockAgentCoreSDKRuntime-us-east-1-10cc733cf5
+      execution_role_auto_create: false
+      account: '600627331406'
+      region: us-east-1
+      ecr_repository: null
+      ecr_auto_create: false
+      s3_path: s3://bedrock-agentcore-codebuild-sources-600627331406-us-east-1
+      s3_auto_create: false
+      network_configuration:
+        network_mode: PUBLIC
+        network_mode_config: null
+      protocol_configuration:
+        server_protocol: HTTP
+      observability:
+        enabled: true
+      lifecycle_configuration:
+        idle_runtime_session_timeout: null
+        max_lifetime: null
+    bedrock_agentcore:
+      agent_id: results_summary-zug3B14PlT
+      agent_arn: arn:aws:bedrock-agentcore:us-east-1:600627331406:runtime/results_summary-zug3B14PlT
+      agent_session_id: 5e311b41-1a3a-4fe1-a4f0-280a9fb6501c
+    codebuild:
+      project_name: null
+      execution_role: null
+      source_bucket: null
+    memory:
+      mode: STM_ONLY
+      memory_id: results_summary_mem-LCVb1uDtTE
+      memory_arn: arn:aws:bedrock-agentcore:us-east-1:600627331406:memory/results_summary_mem-LCVb1uDtTE
+      memory_name: results_summary_mem
+      event_expiry_days: 30
+      first_invoke_memory_check_done: true
+      was_created_by_toolkit: true
+    authorizer_configuration: null
+    request_header_configuration: null
+    oauth_configuration: null
