@@ -41,7 +41,7 @@ const GlassSelect: React.FC<GlassSelectProps> = ({
   );
 
   return (
-    <div className="relative space-y-2">
+    <div className="relative space-y-2" style={{ zIndex: isOpen ? 1000 : 'auto' }}>
       {label && (
         <label className="block text-sm font-medium text-gray-200 text-left">
           {label}
@@ -69,44 +69,55 @@ const GlassSelect: React.FC<GlassSelectProps> = ({
 
       <AnimatePresence>
         {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
-            className="absolute top-full left-0 right-0 z-50 mt-1 glass-card max-h-60 overflow-auto"
-          >
-            {options.map((option) => (
-              <motion.div
-                key={option.value}
-                className="p-3 cursor-pointer hover:bg-white/10 transition-colors duration-200 first:rounded-t-2xl last:rounded-b-2xl"
-                onClick={() => {
-                  onChange(option.value);
-                  setIsOpen(false);
-                }}
-                whileHover={{ x: 4 }}
-              >
-                <div className="text-white font-medium">{option.label}</div>
-                {option.description && (
-                  <div className="text-gray-400 text-sm mt-1">{option.description}</div>
-                )}
-              </motion.div>
-            ))}
-          </motion.div>
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 z-[999]"
+              onClick={() => setIsOpen(false)}
+            />
+            
+            {/* Dropdown */}
+            <motion.div
+              initial={{ opacity: 0, y: -10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              transition={{ duration: 0.15 }}
+              className="absolute top-full left-0 right-0 z-[1000] mt-2 max-h-60 overflow-auto shadow-2xl border border-white/20 rounded-2xl"
+              style={{
+                backdropFilter: 'blur(20px)',
+                background: 'rgba(26, 26, 26, 0.95)'
+              }}
+            >
+              {options.map((option, index) => (
+                <motion.div
+                  key={option.value}
+                  className={`p-4 cursor-pointer hover:bg-white/10 transition-all duration-200 border-b border-white/5 last:border-b-0 ${
+                    index === 0 ? 'rounded-t-2xl' : ''
+                  } ${
+                    index === options.length - 1 ? 'rounded-b-2xl' : ''
+                  }`}
+                  onClick={() => {
+                    onChange(option.value);
+                    setIsOpen(false);
+                  }}
+                  whileHover={{ x: 2 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <div className="text-white font-medium">{option.label}</div>
+                  {option.description && (
+                    <div className="text-gray-400 text-sm mt-1">{option.description}</div>
+                  )}
+                </motion.div>
+              ))}
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 
       {error && (
-        <p className="text-sm text-red-400 animate-fade-in">
+        <p className="text-sm text-red-400 animate-fade-in mt-2">
           {error}
         </p>
-      )}
-
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setIsOpen(false)}
-        />
       )}
     </div>
   );

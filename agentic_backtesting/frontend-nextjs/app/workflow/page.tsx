@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import GlassCard from '@/components/ui/GlassCard';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import AnimatedButton from '@/components/ui/AnimatedButton';
 import { StrategyInput } from '@/types/strategy';
 import { useBacktest } from '@/lib/BacktestContext';
 import agentCoreAPI from '@/lib/agentcore-api';
@@ -31,8 +32,8 @@ export default function WorkflowProgress() {
   const searchParams = useSearchParams();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [strategyInput, setStrategyInput] = useState<StrategyInput | null>(null);
-  const { setResult, setError: setContextError } = useBacktest();
-  const apiCalledRef = useRef(false); // Prevent double API calls in StrictMode
+  const [isWaitingForResult, setIsWaitingForResult] = useState(false);
+  const { result, error } = useBacktest();
 
   // AgentCore components information (simplified)
   const agentCoreComponents: Record<string, AgentCoreComponent> = {
@@ -156,10 +157,6 @@ export default function WorkflowProgress() {
   const [steps, setSteps] = useState<WorkflowStep[]>(workflowSteps);
 
   useEffect(() => {
-    // Prevent double execution in React StrictMode
-    if (apiCalledRef.current) return;
-    apiCalledRef.current = true;
-
     // Get strategy from URL params
     const strategyParam = searchParams.get('strategy');
     if (!strategyParam) {
@@ -167,70 +164,89 @@ export default function WorkflowProgress() {
       return;
     }
 
-    let parsedStrategy: StrategyInput;
     try {
-      parsedStrategy = JSON.parse(strategyParam);
+      const parsedStrategy = JSON.parse(strategyParam);
       if (!parsedStrategy?.name) throw new Error('Invalid strategy data');
       setStrategyInput(parsedStrategy);
     } catch (error) {
       console.error('[Workflow] Parse error:', error);
       router.push('/');
-      return;
     }
+  }, [searchParams, router]);
 
-    let apiComplete = false;
+  // Update step statuses based on current index
+  useEffect(() => {
+    setSteps(prev => prev.map((step, idx) => ({
+      ...step,
+      status: idx < currentStepIndex ? 'completed' : idx === currentStepIndex ? 'active' : 'pending'
+    })));
+  }, [currentStepIndex]);
 
-    // Call API in parallel with animation
-    const callAPI = async () => {
-      try {
-        console.log('[Workflow] Starting API call...');
-        const result = await agentCoreAPI.executeBacktest(parsedStrategy);
-        setResult(result);
-        console.log('[Workflow] ✅ API call complete, result stored in context');
-      } catch (error) {
-        console.error('[Workflow] API error:', error);
-        setContextError(error instanceof Error ? error.message : 'API call failed');
-      } finally {
-        apiComplete = true;
-      }
-    };
+  const handleNext = () => {
+    if (currentStepIndex < steps.length - 1) {
+      setCurrentStepIndex(prev => prev + 1);
+    }
+  };
 
-    // Animate workflow in parallel
-    const animateWorkflow = async () => {
-      // Animate through steps
-      for (let i = 0; i < workflowSteps.length; i++) {
-        setCurrentStepIndex(i);
-        setSteps(prev => prev.map((step, idx) => ({
-          ...step,
-          status: idx < i ? 'completed' : idx === i ? 'active' : 'pending'
-        })));
-        await new Promise(resolve => setTimeout(resolve, 2500));
-      }
+  const handlePrevious = () => {
+    if (currentStepIndex > 0) {
+      setCurrentStepIndex(prev => prev - 1);
+    }
+  };
 
-      setSteps(prev => prev.map(step => ({ ...step, status: 'completed' })));
-      
-      // Wait for API if not complete
-      while (!apiComplete) {
+  const handleExecute = async () => {
+    if (!strategyInput) return;
+    
+    setIsWaitingForResult(true);
+    console.log('[Workflow] Waiting for API result from context...');
+    
+    // Poll for result from context (API was called from strategy builder)
+    const checkResult = async () => {
+      // Check if we have a result or error
+      if (result) {
+        console.log('[Workflow] ✅ Result found in context, navigating to results');
         await new Promise(resolve => setTimeout(resolve, 500));
+        router.push(`/results?strategy=${encodeURIComponent(JSON.stringify(strategyInput))}`);
+        return true;
       }
       
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (error) {
+        console.error('[Workflow] ❌ Error found in context:', error);
+        setIsWaitingForResult(false);
+        return true;
+      }
       
-      // Navigate to results
-      router.push(`/results?strategy=${encodeURIComponent(JSON.stringify(parsedStrategy))}`);
+      return false;
     };
-
-    // Start both in parallel
-    callAPI();
-    animateWorkflow();
-  }, [searchParams, router, setResult, setContextError]);
+    
+    // Check immediately
+    if (await checkResult()) return;
+    
+    // Poll every 500ms for result
+    const pollInterval = setInterval(async () => {
+      if (await checkResult()) {
+        clearInterval(pollInterval);
+      }
+    }, 500);
+    
+    // Timeout after 5 minutes
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      if (!result && !error) {
+        console.error('[Workflow] ⏱️ Timeout waiting for result');
+        setIsWaitingForResult(false);
+      }
+    }, 300000);
+  };
 
   const currentStep = steps[currentStepIndex];
   const currentComponentInfo = currentStep ? agentCoreComponents[currentStep.component] : agentCoreComponents.runtime;
+  const isFirstStep = currentStepIndex === 0;
+  const isLastStep = currentStepIndex === steps.length - 1;
+  const hasError = !!error;
 
   const getProgressPercentage = () => {
-    const completedSteps = steps.filter(s => s.status === 'completed').length;
-    return (completedSteps / steps.length) * 100;
+    return ((currentStepIndex + 1) / steps.length) * 100;
   };
 
   if (!strategyInput) {
@@ -310,7 +326,10 @@ export default function WorkflowProgress() {
                         <h3 className="text-2xl font-semibold text-white">{currentStep.name}</h3>
                         <p className="text-gray-300">{currentStep.description}</p>
                       </div>
-                      <LoadingSpinner size="md" />
+                      <div className="text-right">
+                        <div className="text-sm text-gray-400">Step</div>
+                        <div className="text-2xl font-bold text-white">{currentStepIndex + 1}/{steps.length}</div>
+                      </div>
                     </div>
 
                     <div 
@@ -357,6 +376,79 @@ export default function WorkflowProgress() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Error Display */}
+            {hasError && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+              >
+                <GlassCard className="p-6 border-2 border-red-400/50 bg-red-900/10">
+                  <div className="flex items-start space-x-3">
+                    <div className="text-3xl">❌</div>
+                    <div className="flex-1">
+                      <h4 className="text-lg font-semibold text-red-400 mb-2">Error Occurred</h4>
+                      <p className="text-gray-300 text-sm">{error}</p>
+                      <AnimatedButton
+                        onClick={() => router.push('/')}
+                        variant="secondary"
+                        size="sm"
+                        className="mt-4"
+                      >
+                        ← Back to Strategy Builder
+                      </AnimatedButton>
+                    </div>
+                  </div>
+                </GlassCard>
+              </motion.div>
+            )}
+
+            {/* Navigation Buttons */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+            >
+              <GlassCard className="p-6">
+                <div className="flex items-center justify-between gap-4">
+                  <AnimatedButton
+                    onClick={handlePrevious}
+                    disabled={isFirstStep || isWaitingForResult}
+                    variant="secondary"
+                    size="lg"
+                    className="flex-1"
+                  >
+                    ← Previous Step
+                  </AnimatedButton>
+
+                  {!isLastStep ? (
+                    <AnimatedButton
+                      onClick={handleNext}
+                      disabled={isWaitingForResult}
+                      variant="accent"
+                      size="lg"
+                      glow
+                      className="flex-1"
+                    >
+                      Next Step →
+                    </AnimatedButton>
+                  ) : (
+                    <AnimatedButton
+                      onClick={handleExecute}
+                      disabled={isWaitingForResult || hasError}
+                      loading={isWaitingForResult}
+                      variant="accent"
+                      size="lg"
+                      glow
+                      className="flex-1"
+                    >
+                      {isWaitingForResult ? 'Waiting for Results...' : hasError ? '❌ Error Occurred' : '🚀 View Results'}
+                    </AnimatedButton>
+                  )}
+                </div>
+              </GlassCard>
+            </motion.div>
           </div>
 
           {/* Workflow Steps */}
@@ -370,18 +462,24 @@ export default function WorkflowProgress() {
                 <h3 className="text-xl font-semibold text-white mb-4">📋 Workflow Steps</h3>
                 <div className="space-y-3">
                   {steps.map((step, index) => (
-                    <div key={step.id} className="flex items-center space-x-3">
+                    <motion.div 
+                      key={step.id} 
+                      className={`flex items-center space-x-3 p-3 rounded-lg transition-all cursor-pointer ${
+                        step.status === 'active' ? 'bg-white/5' : ''
+                      }`}
+                      onClick={() => setCurrentStepIndex(index)}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                         step.status === 'completed' ? 'bg-accent-green' : 
-                        step.status === 'active' ? 'bg-accent-blue animate-pulse' : 
+                        step.status === 'active' ? 'bg-accent-blue' : 
                         'bg-gray-600'
                       }`}>
                         {step.status === 'completed' ? (
                           <span className="text-white text-sm">✓</span>
-                        ) : step.status === 'active' ? (
-                          <LoadingSpinner size="sm" />
                         ) : (
-                          <span className="text-gray-400 text-sm">{index + 1}</span>
+                          <span className="text-white text-sm">{index + 1}</span>
                         )}
                       </div>
                       <div className="flex-1">
@@ -394,7 +492,7 @@ export default function WorkflowProgress() {
                         </p>
                         <p className="text-xs text-gray-500">{agentCoreComponents[step.component].name}</p>
                       </div>
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               </GlassCard>

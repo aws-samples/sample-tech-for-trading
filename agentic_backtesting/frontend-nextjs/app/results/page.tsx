@@ -259,8 +259,43 @@ export default function ResultsDisplay() {
             <GlassCard className="p-8">
               <h3 className="text-2xl font-semibold text-white mb-6">🤖 AI Agent Analysis</h3>
               <div className="prose prose-invert max-w-none">
-                <div className="text-gray-300 whitespace-pre-wrap">
-                  {results.analysis_text}
+                <div className="text-gray-300 space-y-4 markdown-content">
+                  {results.analysis_text.split('\n').map((line, index) => {
+                    // Headers
+                    if (line.startsWith('### ')) {
+                      return <h3 key={index} className="text-xl font-semibold text-white mt-6 mb-3">{line.replace(/^###\s+/, '').replace(/\*\*/g, '')}</h3>;
+                    }
+                    if (line.startsWith('## ')) {
+                      return <h2 key={index} className="text-2xl font-bold text-accent-blue mt-8 mb-4">{line.replace(/^##\s+/, '').replace(/\*\*/g, '')}</h2>;
+                    }
+                    // Bold text
+                    if (line.includes('**')) {
+                      const parts = line.split(/(\*\*.*?\*\*)/g);
+                      return (
+                        <p key={index} className="text-gray-300 leading-relaxed">
+                          {parts.map((part, i) => 
+                            part.startsWith('**') && part.endsWith('**') ? (
+                              <strong key={i} className="text-white font-semibold">{part.replace(/\*\*/g, '')}</strong>
+                            ) : part
+                          )}
+                        </p>
+                      );
+                    }
+                    // List items
+                    if (line.match(/^\d+\.\s+/)) {
+                      return <li key={index} className="text-gray-300 ml-6 mb-2">{line.replace(/^\d+\.\s+/, '')}</li>;
+                    }
+                    // Bullet points
+                    if (line.startsWith('- ')) {
+                      return <li key={index} className="text-gray-300 ml-6 mb-2 list-disc">{line.replace(/^-\s+/, '')}</li>;
+                    }
+                    // Empty lines
+                    if (line.trim() === '') {
+                      return <div key={index} className="h-2" />;
+                    }
+                    // Regular text
+                    return <p key={index} className="text-gray-300 leading-relaxed">{line}</p>;
+                  })}
                 </div>
               </div>
             </GlassCard>

@@ -8,9 +8,12 @@ import GlassInput from '@/components/ui/GlassInput';
 import GlassSelect from '@/components/ui/GlassSelect';
 import AnimatedButton from '@/components/ui/AnimatedButton';
 import { AVAILABLE_STOCKS, ValidationResult } from '@/types/strategy';
+import { useBacktest } from '@/lib/BacktestContext';
+import agentCoreAPI from '@/lib/agentcore-api';
 
 export default function StrategyBuilder() {
   const router = useRouter();
+  const { setResult, setError: setContextError } = useBacktest();
   const [formData, setFormData] = useState({
     name: 'My Trading Strategy',
     stock_symbol: 'AAPL',
@@ -70,6 +73,22 @@ export default function StrategyBuilder() {
     if (!validateForm().isValid) return;
 
     setIsSubmitting(true);
+
+    // Start API call immediately in background
+    const apiPromise = agentCoreAPI.executeBacktest(formData)
+      .then(result => {
+        console.log('[StrategyBuilder] ✅ API call complete, result stored in context');
+        setResult(result);
+      })
+      .catch(error => {
+        console.error('[StrategyBuilder] API error:', error);
+        setContextError(error instanceof Error ? error.message : 'API call failed');
+      });
+
+    // Store the promise in sessionStorage so workflow page can access it
+    // (We'll use the context instead, but navigate immediately)
+    
+    // Navigate to workflow page immediately (API continues in background)
     router.push(`/workflow?strategy=${encodeURIComponent(JSON.stringify(formData))}`);
   };
 
