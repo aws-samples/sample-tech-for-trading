@@ -1,0 +1,11 @@
+# Dependencies for Market Data MCP Server
+# Used for both Lambda container and local migration scripts
+
+# Core dependencies
+boto3>=1.26.0
+pyarrow>=10.0.0
+pandas>=2.0.0
+requests>=2.28.0
+
+# PyIceberg for S3 Tables integration (minimal install)
+pyiceberg>=0.5.0
