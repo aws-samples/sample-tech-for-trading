@@ -70,9 +70,10 @@ print(f"🔑 Start Session ID: {_session_id}")
 # Global storage for market data
 _stored_market_data = {}
 
+# Global variables for strategy generation
+_strategy_call_count = 0
 
 agentcore_runtime_client = boto3.client('bedrock-agentcore', region_name="us-east-1")
-
 
 def extract_market_data_from_gateway_response(gateway_response: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -263,11 +264,6 @@ def get_backtest_results_from_memory(symbol: str = None) -> Dict[str, Any]:
         traceback.print_exc()
         return None
 
-# Global variables for strategy generation
-_strategy_call_count = 0
-
-# Global variable for storing market data
-_stored_market_data = {}
 
 def get_secret_hash(username: str, client_id: str, client_secret: str) -> str:
     """Generate secret hash for Cognito authentication"""
@@ -321,7 +317,7 @@ def authenticate_with_cognito() -> str:
         print(f"❌ Cognito authentication failed: {e}")
         raise
 
-def call_gateway_market_data_with_cognito(symbol: str, param_type: str = "symbol") -> Dict[str, Any]:
+def call_gateway_market_data_with_cognito(symbol: str, start_date: str = None, end_date: str = None, limit: int = 252) -> Dict[str, Any]:
     """Call AgentCore Gateway with Cognito authentication (synchronous)"""
     try:
         # Get gateway configuration
@@ -332,6 +328,18 @@ def call_gateway_market_data_with_cognito(symbol: str, param_type: str = "symbol
         # Authenticate with Cognito (now synchronous)
         access_token = authenticate_with_cognito()
         
+        # Build arguments with optional date range
+        arguments = {
+            "symbol": symbol.upper(),
+            "limit": limit
+        }
+        
+        if start_date:
+            arguments["start_date"] = start_date
+        
+        if end_date:
+            arguments["end_date"] = end_date
+        
         # Prepare JSON-RPC 2.0 request payload
         payload = {
             "jsonrpc": "2.0",
@@ -339,9 +347,7 @@ def call_gateway_market_data_with_cognito(symbol: str, param_type: str = "symbol
             "method": "tools/call",
             "params": {
                 "name": "market-data-lambda-target___get_market_data",
-                "arguments": {
-                    "symbol": symbol.upper()
-                }
+                "arguments": arguments
             }
         }
         
@@ -416,34 +422,33 @@ def call_gateway_market_data_with_cognito(symbol: str, param_type: str = "symbol
 
 
 @tool
-def fetch_market_data_via_gateway(symbol: str = None, investment_area: str = None) -> Dict[str, Any]:
+def fetch_market_data_via_gateway(symbol: str, start_date: str = None, end_date: str = None, limit: int = 252) -> Dict[str, Any]:
     """
     Fetch market data via AgentCore Gateway MCP with Cognito authentication.
     This tool waits synchronously for completion before returning.
     
     Args:
-        symbol: Stock symbol (e.g., AMZN) - preferred method
+        symbol: Stock symbol to get tick data for. Examples: AAPL, MSFT, GOOGL, NVDA, JNJ, PFE, JPM, BAC, XOM, CVX
+        start_date: Start date for data retrieval in format YYYY-MM-DD (e.g., 2024-01-15). Use 01 for January, not 1. Use 01 for single digit days, not 1.
+        end_date: End date for data retrieval in format YYYY-MM-DD (e.g., 2024-12-31). Use 01 for January, not 1. Use 01 for single digit days, not 1.
+        limit: Maximum number of data points to return (default: 252)
     
     Returns:
         Market data from external service via Gateway
     """
     import time
     
-    if symbol:
-        print(f"🌐 AgentCore Gateway: Fetching {symbol} data via MCP...")
-        target_param = symbol
-        param_type = "symbol"
-    else:
-        print(f"🌐 AgentCore Gateway: No symbol or sector specified, using AMZN...")
-        target_param = "AMZN"
-        param_type = "symbol"
+    if not symbol:
+        print(f"🌐 AgentCore Gateway: No symbol specified, using AMZN...")
+        symbol = "AMZN"
     
-    # print("⏳ Fetching market data (synchronous)...")
+    print(f"🌐 AgentCore Gateway: Fetching {symbol} data via MCP (start: {start_date}, end: {end_date}, limit: {limit})...")
+    
     start_time = time.time()
     
     try:
-        # Call synchronous function directly (no asyncio.run needed)
-        gateway_response = call_gateway_market_data_with_cognito(target_param, param_type)
+        # Call synchronous function directly with date range parameters
+        gateway_response = call_gateway_market_data_with_cognito(symbol, start_date, end_date, limit)
         
         # Extract structured data from gateway response
         global _stored_market_data
@@ -454,7 +459,7 @@ def fetch_market_data_via_gateway(symbol: str = None, investment_area: str = Non
         time.sleep(0.5)  # Brief pause to ensure completion
 
         # Extract metadata for detailed success message
-        symbol_key = list(_stored_market_data.keys())[0] if _stored_market_data else target_param
+        symbol_key = list(_stored_market_data.keys())[0] if _stored_market_data else symbol
         if symbol_key in _stored_market_data:
             metadata = _stored_market_data[symbol_key].get('metadata', {})
             total_rows = metadata.get('total_rows', 0)

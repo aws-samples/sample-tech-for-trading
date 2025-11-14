@@ -30,7 +30,7 @@ if [ -f "results_summary.py" ]; then
     
     # Launch the agent
     echo "🚀 Launching agent to AgentCore..."
-    agentcore launch
+    agentcore launch --auto-update-on-conflict
     
     echo "✅ Results Summary deployed successfully!"
     echo ""

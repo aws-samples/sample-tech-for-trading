@@ -29,7 +29,7 @@ if [ -f "quant_agent.py" ]; then
     
     # Launch the agent
     echo "🚀 Launching agent to AgentCore..."
-    agentcore launch
+    agentcore launch --auto-update-on-conflict
     
     echo "✅ Strategy Quant deployed successfully!"
     echo ""
