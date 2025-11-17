@@ -16,7 +16,7 @@ export default function StrategyBuilder() {
   const { setResult, setError: setContextError } = useBacktest();
   const [formData, setFormData] = useState({
     name: 'My Trading Strategy',
-    stock_symbol: 'AAPL',
+    stock_symbol: 'AMZN',
     backtest_window: '1Y',
     max_positions: 1,
     stop_loss: 5,
@@ -32,7 +32,8 @@ export default function StrategyBuilder() {
 
   const stockOptions = AVAILABLE_STOCKS.map(stock => ({
     value: stock.symbol,
-    label: `${stock.symbol} - ${stock.name}`
+    label: `${stock.symbol} - ${stock.name}`,
+    disabled: stock.symbol !== 'AMZN' // Only AMZN has data available
   }));
 
   const windowOptions = [

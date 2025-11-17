@@ -2,6 +2,13 @@
 
 # Next.js Deployment Script for AgentCore Backtesting App
 # Deploys to AWS S3 + CloudFront (Static Export)
+#
+# Prerequisites:
+# 1. AWS CLI configured (aws configure)
+# 2. Node.js 18+ installed
+# 3. Environment variables set in .env.local
+#
+# See README.md for full documentation
 
 set -e
 
