@@ -1,14 +1,14 @@
-# Agentic Backtesting - Multi-Agent Trading System
+# Agentic Backtesting - Multi-Agent Strategy Backtesting System
 
-A multi-agent system built with Strands for automated trading strategy development and backtesting using Redshift data.
+A multi-agent system built with Strands for automated trading strategy development and backtesting using historical market data.
 
 ## Overview
 
 This system uses 4 specialized agents orchestrated through Strands to transform trading ideas into backtested strategies:
 
 1. **Strategy Generator Agent** - Converts natural language trading ideas into executable Backtrader strategies
-2. **Market Data Agent** - Fetches historical market data from AWS Redshift
-3. **Backtest Agent** - Executes backtests using Backtrader framework
+2. **Market Data Tool** - Fetches historical market data from S3 Table
+3. **Backtest Tool** - Executes backtests using Backtrader framework
 4. **Results Summary Agent** - Analyzes performance and generates comprehensive reports
 
 ## Architecture
