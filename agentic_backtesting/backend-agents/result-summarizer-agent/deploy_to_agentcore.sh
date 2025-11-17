@@ -28,9 +28,26 @@ if [ -f "results_summary.py" ]; then
         --name results_summary \
         --requirements-file requirements.txt
     
-    # Launch the agent
-    echo "🚀 Launching agent to AgentCore..."
-    agentcore launch --auto-update-on-conflict
+    
+    # Build environment variables from .env file
+    echo "🔧 Preparing environment variables from .env..."
+    ENV_ARGS=""
+    if [ -f ".env" ]; then
+        # Read .env file and build --env arguments
+        while IFS='=' read -r key value; do
+            # Skip empty lines and comments
+            if [[ ! -z "$key" && ! "$key" =~ ^# ]]; then
+                # Remove any quotes from value
+                value=$(echo "$value" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+                ENV_ARGS="$ENV_ARGS --env $key=$value"
+                echo "   ✓ $key"
+            fi
+        done < .env
+    fi
+    
+    # Launch the agent with environment variables
+    echo "🚀 Launching agent to AgentCore with environment variables: $ENV_ARGS"
+    agentcore launch --auto-update-on-conflict $ENV_ARGS
     
     echo "✅ Results Summary deployed successfully!"
     echo ""
