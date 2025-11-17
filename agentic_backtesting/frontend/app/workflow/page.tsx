@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import GlassCard from '@/components/ui/GlassCard';
@@ -8,7 +8,6 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import AnimatedButton from '@/components/ui/AnimatedButton';
 import { StrategyInput } from '@/types/strategy';
 import { useBacktest } from '@/lib/BacktestContext';
-import agentCoreAPI from '@/lib/agentcore-api';
 
 interface WorkflowStep {
   id: string;
@@ -27,7 +26,7 @@ interface AgentCoreComponent {
   keyFeatures: string[];
 }
 
-export default function WorkflowProgress() {
+function WorkflowProgressContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -182,6 +181,20 @@ export default function WorkflowProgress() {
     })));
   }, [currentStepIndex]);
 
+  // Watch for result or error changes and navigate automatically
+  useEffect(() => {
+    if (!isWaitingForResult || !strategyInput) return;
+
+    if (result) {
+      console.log('[Workflow] ✅ Result found in context, navigating to results');
+      setIsWaitingForResult(false);
+      router.push(`/results?strategy=${encodeURIComponent(JSON.stringify(strategyInput))}`);
+    } else if (error) {
+      console.error('[Workflow] ❌ Error found in context:', error);
+      setIsWaitingForResult(false);
+    }
+  }, [result, error, isWaitingForResult, strategyInput, router]);
+
   const handleNext = () => {
     if (currentStepIndex < steps.length - 1) {
       setCurrentStepIndex(prev => prev + 1);
@@ -194,49 +207,25 @@ export default function WorkflowProgress() {
     }
   };
 
-  const handleExecute = async () => {
+  const handleExecute = () => {
     if (!strategyInput) return;
     
+    console.log('[Workflow] Starting to wait for API result from context...');
+    
+    // Check if result already exists
+    if (result) {
+      console.log('[Workflow] ✅ Result already available, navigating immediately');
+      router.push(`/results?strategy=${encodeURIComponent(JSON.stringify(strategyInput))}`);
+      return;
+    }
+    
+    if (error) {
+      console.error('[Workflow] ❌ Error already present:', error);
+      return;
+    }
+    
+    // Set waiting state - useEffect will handle navigation when result arrives
     setIsWaitingForResult(true);
-    console.log('[Workflow] Waiting for API result from context...');
-    
-    // Poll for result from context (API was called from strategy builder)
-    const checkResult = async () => {
-      // Check if we have a result or error
-      if (result) {
-        console.log('[Workflow] ✅ Result found in context, navigating to results');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        router.push(`/results?strategy=${encodeURIComponent(JSON.stringify(strategyInput))}`);
-        return true;
-      }
-      
-      if (error) {
-        console.error('[Workflow] ❌ Error found in context:', error);
-        setIsWaitingForResult(false);
-        return true;
-      }
-      
-      return false;
-    };
-    
-    // Check immediately
-    if (await checkResult()) return;
-    
-    // Poll every 500ms for result
-    const pollInterval = setInterval(async () => {
-      if (await checkResult()) {
-        clearInterval(pollInterval);
-      }
-    }, 500);
-    
-    // Timeout after 5 minutes
-    setTimeout(() => {
-      clearInterval(pollInterval);
-      if (!result && !error) {
-        console.error('[Workflow] ⏱️ Timeout waiting for result');
-        setIsWaitingForResult(false);
-      }
-    }, 300000);
   };
 
   const currentStep = steps[currentStepIndex];
@@ -501,5 +490,18 @@ export default function WorkflowProgress() {
         </div>
       </div>
     </div>
+  );
+}
+
+
+export default function WorkflowProgress() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-dark-primary via-dark-secondary to-dark-tertiary flex items-center justify-center">
+        <LoadingSpinner size="lg" text="Loading workflow..." />
+      </div>
+    }>
+      <WorkflowProgressContent />
+    </Suspense>
   );
 }

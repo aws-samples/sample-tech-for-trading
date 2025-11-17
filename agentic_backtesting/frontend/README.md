@@ -305,10 +305,60 @@ how is the strategy performance: {...}
 
 ## 🔐 Security
 
-- **Server-side only** - AWS credentials never exposed to browser
-- **Environment variables** - Sensitive data in `.env.local`
-- **IAM roles** - Use IAM roles in production (no access keys)
-- **HTTPS** - Always use HTTPS in production
+### Current Architecture (Static Export)
+
+When deployed to S3 + CloudFront, the app uses **client-side AWS SDK**:
+
+```
+Browser → AWS SDK (with embedded credentials) → AgentCore Runtime
+```
+
+**How it works:**
+- AWS credentials are embedded in JavaScript at build time (`NEXT_PUBLIC_*` variables)
+- Browser directly calls AgentCore using AWS SDK for JavaScript v3
+- No backend server needed
+
+**Security considerations:**
+- ⚠️ Credentials visible in browser source code
+- ⚠️ All users share same credentials
+- ⚠️ Can't rotate without rebuild
+- ✅ Acceptable for development/demos
+- ✅ Simple architecture, low cost
+
+### Production Recommendations
+
+For production deployments, consider these alternatives:
+
+**Option 1: API Gateway + Lambda** (Most Secure)
+```
+Browser → API Gateway → Lambda (IAM role) → AgentCore
+```
+- ✅ No credentials in browser
+- ✅ User authentication via Cognito
+- ✅ Rate limiting and monitoring
+- ⚠️ More complex setup
+- ⚠️ Higher cost (~$5/month)
+
+**Option 2: Cognito Identity Pool** (Balanced)
+```
+Browser → Cognito (temporary credentials) → AgentCore
+```
+- ✅ Temporary credentials
+- ✅ User-specific access
+- ✅ Simpler than API Gateway
+- ✅ Low cost (~$1.50/month)
+
+**Current approach is fine for:**
+- Development and testing
+- Internal demos
+- Proof of concepts
+- Low-risk applications
+
+**Migrate to production architecture when:**
+- Deploying to external users
+- Need user authentication
+- Require audit trails
+- Security compliance needed
 
 ## 📝 Environment Variables
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import GlassCard from '@/components/ui/GlassCard';
@@ -9,7 +9,7 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { StrategyInput, AgentOutput } from '@/types/strategy';
 import { useBacktest } from '@/lib/BacktestContext';
 
-export default function ResultsDisplay() {
+function ResultsDisplayContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { result: contextResult, error: contextError } = useBacktest();
@@ -321,5 +321,18 @@ export default function ResultsDisplay() {
         </motion.div>
       </div>
     </div>
+  );
+}
+
+
+export default function ResultsDisplay() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-dark-primary via-dark-secondary to-dark-tertiary flex items-center justify-center">
+        <LoadingSpinner size="lg" text="Loading results..." />
+      </div>
+    }>
+      <ResultsDisplayContent />
+    </Suspense>
   );
 }
