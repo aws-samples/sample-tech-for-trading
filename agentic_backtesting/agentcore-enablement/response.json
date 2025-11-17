@@ -1,1 +1,0 @@
-{"errorMessage": "Unable to import module 'lambda_function': No module named 'pandas'", "errorType": "Runtime.ImportModuleError", "requestId": "", "stackTrace": []}
