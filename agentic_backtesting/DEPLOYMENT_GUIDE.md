@@ -10,8 +10,7 @@ This guide provides step-by-step instructions for deploying the Quantitative Tra
    - [1.2 Result Summarizer Agent](#12-result-summarizer-agent)
    - [1.3 Quant Agent](#13-quant-agent)
 3. [Deploy Frontend](#deploy-frontend)
-4. [Verification](#verification)
-5. [Troubleshooting](#troubleshooting)
+
 
 ---
 
@@ -352,41 +351,6 @@ For complete frontend deployment instructions, see: `frontend-nextjs/README.md`
 2. Enter a trading strategy query
 3. Verify the complete workflow executes successfully
 
-
----
-
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Frontend (Next.js)                       │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Quant Agent (Orchestrator)                  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │ Tools:                                                     │  │
-│  │ • fetch_market_data_via_gateway                          │  │
-│  │ • generate_trading_strategy (calls Strategy Generator)   │  │
-│  │ • run_backtest                                           │  │
-│  │ • create_results_summary (calls Result Summarizer)      │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└─────┬──────────────────┬──────────────────┬────────────────────┘
-      │                  │                  │
-      ▼                  ▼                  ▼
-┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐
-│  Strategy    │  │   Result     │  │  Market Data Gateway     │
-│  Generator   │  │  Summarizer  │  │  (MCP + Cognito Auth)    │
-│  Agent       │  │  Agent       │  │                          │
-└──────────────┘  └──────────────┘  └────────┬─────────────────┘
-                                             │
-                                             ▼
-                                    ┌─────────────────┐
-                                    │  Lambda         │
-                                    │  (S3 Tables)    │
-                                    └─────────────────┘
-```
 
 ---
 
