@@ -8,12 +8,9 @@ import GlassInput from '@/components/ui/GlassInput';
 import GlassSelect from '@/components/ui/GlassSelect';
 import AnimatedButton from '@/components/ui/AnimatedButton';
 import { AVAILABLE_STOCKS, ValidationResult } from '@/types/strategy';
-import { useBacktest } from '@/lib/BacktestContext';
-import agentCoreAPI from '@/lib/agentcore-api';
 
 export default function StrategyBuilder() {
   const router = useRouter();
-  const { setResult, setError: setContextError } = useBacktest();
   const [formData, setFormData] = useState({
     name: 'My Trading Strategy',
     stock_symbol: 'AMZN',
@@ -21,8 +18,8 @@ export default function StrategyBuilder() {
     max_positions: 1,
     stop_loss: 5,
     take_profit: 10,
-    buy_conditions: 'EMA50 > EMA200',
-    sell_conditions: 'EMA50 < EMA200'
+    buy_conditions: 'Short-term moving average crosses above long-term moving average',
+    sell_conditions: 'Short-term moving average crosses below long-term moving average'
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validation, setValidation] = useState<ValidationResult>({
@@ -75,22 +72,29 @@ export default function StrategyBuilder() {
 
     setIsSubmitting(true);
 
-    // Start API call immediately in background
-    const apiPromise = agentCoreAPI.executeBacktest(formData)
-      .then(result => {
-        console.log('[StrategyBuilder] ✅ API call complete, result stored in context');
-        setResult(result);
-      })
-      .catch(error => {
-        console.error('[StrategyBuilder] API error:', error);
-        setContextError(error instanceof Error ? error.message : 'API call failed');
+    try {
+      // Start the backtest job
+      const response = await fetch('/api/execute-backtest-async', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
       });
 
-    // Store the promise in sessionStorage so workflow page can access it
-    // (We'll use the context instead, but navigate immediately)
-    
-    // Navigate to workflow page immediately (API continues in background)
-    router.push(`/workflow?strategy=${encodeURIComponent(JSON.stringify(formData))}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const { jobId } = await response.json();
+      console.log('[StrategyBuilder] ✅ Job started, ID:', jobId);
+      
+      // Navigate to workflow page with strategy and jobId
+      router.push(`/workflow?strategy=${encodeURIComponent(JSON.stringify(formData))}&jobId=${jobId}`);
+      
+    } catch (error) {
+      console.error('[StrategyBuilder] ❌ Error:', error);
+      alert('Failed to start backtest. Please try again.');
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -187,7 +191,7 @@ export default function StrategyBuilder() {
                     label="📈 Buy Conditions"
                     value={formData.buy_conditions}
                     onChange={(e) => handleInputChange('buy_conditions', e.target.value)}
-                    placeholder="e.g., EMA50 > EMA200"
+                    placeholder="e.g., Price above 20-day moving average and RSI below 70"
                     error={validation.errors.find(e => e.includes('Buy'))}
                   />
 
@@ -195,7 +199,7 @@ export default function StrategyBuilder() {
                     label="📉 Sell Conditions"
                     value={formData.sell_conditions}
                     onChange={(e) => handleInputChange('sell_conditions', e.target.value)}
-                    placeholder="e.g., EMA50 < EMA200"
+                    placeholder="e.g., Price below 20-day moving average or RSI above 80"
                     error={validation.errors.find(e => e.includes('Sell'))}
                   />
                 </div>
@@ -211,7 +215,7 @@ export default function StrategyBuilder() {
                     glow={validation.isValid}
                     className="w-full text-xl py-4"
                   >
-                    {isSubmitting ? 'Processing...' : '🚀 Run Backtest'}
+                    {isSubmitting ? 'Starting Backtest...' : '🚀 Run Backtest'}
                   </AnimatedButton>
                 </div>
               </form>
