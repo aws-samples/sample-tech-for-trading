@@ -38,7 +38,7 @@ function WorkflowProgressContent() {
   const agentCoreComponents: Record<string, AgentCoreComponent> = {
     runtime: {
       name: 'AgentCore Runtime',
-      icon: '⚡',
+      icon: '🚀',
       color: '#00d4ff',
       description: 'Serverless, framework-agnostic hosting for AI agents',
       keyFeatures: [
@@ -51,7 +51,7 @@ function WorkflowProgressContent() {
     },
     gateway: {
       name: 'AgentCore Gateway',
-      icon: '🌐',
+      icon: '🔗',
       color: '#10b981',
       description: 'Build, deploy, and connect to tools at scale',
       keyFeatures: [
@@ -64,7 +64,7 @@ function WorkflowProgressContent() {
     },
     memory: {
       name: 'AgentCore Memory',
-      icon: '🧠',
+      icon: '💾',
       color: '#8b5cf6',
       description: 'Persistent knowledge with event and semantic memory',
       keyFeatures: [
@@ -290,6 +290,9 @@ function WorkflowProgressContent() {
             </div>
           </GlassCard>
         </motion.div>
+
+
+
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Current Step Details */}
