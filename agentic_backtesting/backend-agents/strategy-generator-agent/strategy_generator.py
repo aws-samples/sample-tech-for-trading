@@ -2,7 +2,6 @@
 Strategy Generator Agent - Converts JSON strategy config to executable Backtrader code
 """
 
-from base_agent import BaseAgent, AWS_REGION
 import json
 import os
 from typing import Dict, Any, Union
@@ -18,7 +17,7 @@ load_dotenv()
 app = BedrockAgentCoreApp()
 
 
-class StrategyGeneratorAgent(BaseAgent):
+class StrategyGeneratorAgent():
     """Agent that generates Backtrader strategy code from JSON configuration"""
     
     def __init__(self):
@@ -33,18 +32,19 @@ Generate clean, efficient Backtrader strategy code that:
 Always return complete, runnable Python code with proper imports and class structure."""
         
         # Get Strategy Generator specific configuration from environment
+        aws_region = os.getenv('AWS_REGION', 'us-east-1')
         model_id = os.getenv('STRATEGY_GENERATOR_MODEL_ID', 'us.anthropic.claude-sonnet-4-20250514-v1:0')
         temperature = float(os.getenv('STRATEGY_GENERATOR_TEMPERATURE', '0.3'))
         
         print(f"🔧 Strategy Generator Configuration:")
         print(f"   Model ID: {model_id}")
-        print(f"   Region: {AWS_REGION}")
+        print(f"   Region: {aws_region}")
         print(f"   Temperature: {temperature}")
         
         # Create dedicated model for Strategy Generator
         strategy_model = BedrockModel(
             model_id=model_id,
-            region_name=AWS_REGION,
+            region_name=aws_region,
             temperature=temperature,
         )
 

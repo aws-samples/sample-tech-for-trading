@@ -20,16 +20,39 @@ if [ -f "quant_agent.py" ]; then
     echo "✅ Agent file found: quant_agent.py"
     echo ""
     
-    # Configure the agent
+    # Ensure .env file is included in deployment
     echo "📝 Configuring agent..."
+    if [ ! -f ".env" ]; then
+        echo "❌ .env file not found!"
+        exit 1
+    fi
+    
     agentcore configure \
         --entrypoint quant_agent.py \
         --name quant_agent \
-        --requirements-file requirements.txt
+        --requirements-file requirements.txt \
+        --idle-timeout 900 \
+        --non-interactive
     
-    # Launch the agent
-    echo "🚀 Launching agent to AgentCore..."
-    agentcore launch
+    # Build environment variables from .env file
+    echo "🔧 Preparing environment variables from .env..."
+    ENV_ARGS=""
+    if [ -f ".env" ]; then
+        # Read .env file and build --env arguments
+        while IFS='=' read -r key value; do
+            # Skip empty lines and comments
+            if [[ ! -z "$key" && ! "$key" =~ ^# ]]; then
+                # Remove any quotes from value
+                value=$(echo "$value" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+                ENV_ARGS="$ENV_ARGS --env $key=$value"
+                echo "   ✓ $key"
+            fi
+        done < .env
+    fi
+    
+    # Launch the agent with environment variables
+    echo "🚀 Launching agent to AgentCore with environment variables: $ENV_ARGS"
+    agentcore launch --auto-update-on-conflict $ENV_ARGS
     
     echo "✅ Strategy Quant deployed successfully!"
     echo ""

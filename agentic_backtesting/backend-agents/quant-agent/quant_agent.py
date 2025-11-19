@@ -5,36 +5,18 @@ Single agent with Strands tools for strategy generation, backtesting, and result
 """
 
 import os
-os.environ["BYPASS_TOOL_CONSENT"] = "true"
 
 # Load environment variables from .env file
 from dotenv import load_dotenv
 load_dotenv()
-
-# Set environment variables explicitly for AgentCore runtime
-os.environ.update({
-    'AGENTCORE_GATEWAY_URL': 'https://market-data-mcp-gateway-lryjsuyell.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp',
-    'STRATEGY_GENERATOR_RUNTIME_ARN': 'arn:aws:bedrock-agentcore:us-east-1:600627331406:runtime/strategy_generator-XJMGBxAgBL',
-    'BACKTEST_SUMMARY_RUNTIME_ARN': 'arn:aws:bedrock-agentcore:us-east-1:600627331406:runtime/results_summary-zug3B14PlT',
-    'COGNITO_USER_POOL_ID': 'us-east-1_eAn2oP0lv',
-    'COGNITO_CLIENT_ID': '5jajojm4ullslg0cqu98ffcfaa',
-    'COGNITO_CLIENT_SECRET': 'c1n9f62buh5vu8dlpt9ras6qeggn2agpr52inmnulunp18ke1av',
-    'COGNITO_USERNAME': 'mcp-test-user',
-    'COGNITO_PASSWORD': 'TempPass123!',
-    'AWS_REGION': 'us-east-1',
-    'AWS_DEFAULT_REGION': 'us-east-1',
-    'DEBUG': 'true',
-    'BYPASS_TOOL_CONSENT': 'true'
-})
 
 # Verify environment variables are loaded
 print("🔧 Environment Variables Loaded:")
 print(f"   AGENTCORE_GATEWAY_URL: {os.getenv('AGENTCORE_GATEWAY_URL', 'Not set')}")
 print(f"   STRATEGY_GENERATOR_RUNTIME_ARN: {os.getenv('STRATEGY_GENERATOR_RUNTIME_ARN', 'Not set')}")
 print(f"   COGNITO_USER_POOL_ID: {os.getenv('COGNITO_USER_POOL_ID', 'Not set')}")
-print(f"   COGNITO_CLIENT_ID: {os.getenv('COGNITO_CLIENT_ID', 'Not set')[:10]}..." if os.getenv('COGNITO_CLIENT_ID') else "   COGNITO_CLIENT_ID: Not set")
-print(f"   AWS_REGION: {os.getenv('AWS_REGION', 'Not set')}")
-print(f"   DEBUG: {os.getenv('DEBUG', 'Not set')}")
+print(f"   COGNITO_CLIENT_ID: {os.getenv('COGNITO_CLIENT_ID', 'Not set')}")
+print(f"   AWS_REGION: {os.getenv('AWS_REGION', 'us-east-1')}")
 
 from bedrock_agentcore import BedrockAgentCoreApp
 from bedrock_agentcore.memory import MemoryClient
@@ -59,20 +41,12 @@ from tools.backtest import BacktestTool
 # Initialize the AgentCore app
 app = BedrockAgentCoreApp()
 
-# Initialize AgentCore Memory Client (legacy)
-memory_client = MemoryClient(region_name="us-east-1")
-_memory_id = "QuantAgentMemory-OiP2OCCjdp"
-_actor_id = "Quant"
-# Use a consistent session_id for the day so save and retrieve work together
-_session_id = f"quant_session_{datetime.now().strftime('%Y%m%d')}"  # Changes daily, not per second
-print(f"🔑 Start Session ID: {_session_id}")
-
 # Global storage for market data
 _stored_market_data = {}
 
+_region_name = os.getenv('AWS_REGION', 'us-east-1')
 
-agentcore_runtime_client = boto3.client('bedrock-agentcore', region_name="us-east-1")
-
+agentcore_runtime_client = boto3.client('bedrock-agentcore', region_name=_region_name)
 
 def extract_market_data_from_gateway_response(gateway_response: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -181,6 +155,40 @@ def extract_market_data_from_gateway_response(gateway_response: Dict[str, Any]) 
         }
 
 
+def get_memory_id_by_name(name_prefix: str = "quant_agent") -> str:
+    """
+    Retrieve AgentCore Memory ID by searching for memory with name starting with prefix.
+    
+    Args:
+        name_prefix: The prefix to search for in memory names (default: "quant_agent")
+    
+    Returns:
+        Memory ID string, or creates a new memory if not found
+    """
+    try:
+        agentcore_client = boto3.client('bedrock-agentcore-control', region_name=_region_name)
+        
+        # List all memories
+        response = agentcore_client.list_memories()
+        
+        # Search for memory with matching name prefix in the 'id' field
+        for memory in response.get('memories', []):
+            memory_id = memory.get('id', '')
+            # The memory ID format is: {name_prefix}-{random_id}
+            if memory_id.startswith(name_prefix):
+                print(f"✅ Found existing memory: {memory_id}")
+                return memory_id
+        
+    except Exception as e:
+        print(f"❌ Error getting memory ID: {e}")
+        return "your_fallback_id"
+
+memory_client = MemoryClient(region_name=_region_name)
+_memory_id = get_memory_id_by_name("quant_agent")
+_actor_id = "Quant"
+_session_id = f"quant_session_{datetime.now().strftime('%Y%m%d')}"  # Changes daily, not per second
+print(f"🔑 Start Session ID: {_session_id}")
+
 def save_backtest_results_to_memory_sync(results: Dict[str, Any]):
     """Save backtest results to AgentCore Memory using create_event (synchronous version)"""
     try:
@@ -263,11 +271,6 @@ def get_backtest_results_from_memory(symbol: str = None) -> Dict[str, Any]:
         traceback.print_exc()
         return None
 
-# Global variables for strategy generation
-_strategy_call_count = 0
-
-# Global variable for storing market data
-_stored_market_data = {}
 
 def get_secret_hash(username: str, client_id: str, client_secret: str) -> str:
     """Generate secret hash for Cognito authentication"""
@@ -283,12 +286,12 @@ def authenticate_with_cognito() -> str:
     """Authenticate with Cognito and return access token (synchronous)"""
     try:
         # Get Cognito configuration from environment
-        user_pool_id = os.getenv('COGNITO_USER_POOL_ID', 'us-east-1_eAn2oP0lv')
+        user_pool_id = os.getenv('COGNITO_USER_POOL_ID')
         client_id = os.getenv('COGNITO_CLIENT_ID')
         client_secret = os.getenv('COGNITO_CLIENT_SECRET')
         username = os.getenv('COGNITO_USERNAME')
         password = os.getenv('COGNITO_PASSWORD')
-        region = os.getenv('AWS_REGION', 'us-east-1')
+        region = _region_name
         
         if not all([client_id, client_secret, username, password]):
             raise ValueError("Missing Cognito configuration. Please set COGNITO_CLIENT_ID, COGNITO_CLIENT_SECRET, COGNITO_USERNAME, and COGNITO_PASSWORD in .env")
@@ -321,16 +324,28 @@ def authenticate_with_cognito() -> str:
         print(f"❌ Cognito authentication failed: {e}")
         raise
 
-def call_gateway_market_data_with_cognito(symbol: str, param_type: str = "symbol") -> Dict[str, Any]:
+def call_gateway_market_data_with_cognito(symbol: str, start_date: str = None, end_date: str = None, limit: int = 252) -> Dict[str, Any]:
     """Call AgentCore Gateway with Cognito authentication (synchronous)"""
     try:
         # Get gateway configuration
-        gateway_url = os.getenv('AGENTCORE_GATEWAY_URL', 'https://market-data-mcp-gateway-lryjsuyell.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp')
+        gateway_url = os.getenv('AGENTCORE_GATEWAY_URL')
         
         print(f"🌐 Calling AgentCore Gateway: {gateway_url}")
         
         # Authenticate with Cognito (now synchronous)
         access_token = authenticate_with_cognito()
+        
+        # Build arguments with optional date range
+        arguments = {
+            "symbol": symbol.upper(),
+            "limit": limit
+        }
+        
+        if start_date:
+            arguments["start_date"] = start_date
+        
+        if end_date:
+            arguments["end_date"] = end_date
         
         # Prepare JSON-RPC 2.0 request payload
         payload = {
@@ -339,9 +354,7 @@ def call_gateway_market_data_with_cognito(symbol: str, param_type: str = "symbol
             "method": "tools/call",
             "params": {
                 "name": "market-data-lambda-target___get_market_data",
-                "arguments": {
-                    "symbol": symbol.upper()
-                }
+                "arguments": arguments
             }
         }
         
@@ -416,34 +429,33 @@ def call_gateway_market_data_with_cognito(symbol: str, param_type: str = "symbol
 
 
 @tool
-def fetch_market_data_via_gateway(symbol: str = None, investment_area: str = None) -> Dict[str, Any]:
+def fetch_market_data_via_gateway(symbol: str, start_date: str = None, end_date: str = None, limit: int = 252) -> Dict[str, Any]:
     """
     Fetch market data via AgentCore Gateway MCP with Cognito authentication.
     This tool waits synchronously for completion before returning.
     
     Args:
-        symbol: Stock symbol (e.g., AMZN) - preferred method
+        symbol: Stock symbol to get tick data for. Examples: AAPL, MSFT, GOOGL, NVDA, JNJ, PFE, JPM, BAC, XOM, CVX
+        start_date: Start date for data retrieval in format YYYY-MM-DD (e.g., 2024-01-15). Use 01 for January, not 1. Use 01 for single digit days, not 1.
+        end_date: End date for data retrieval in format YYYY-MM-DD (e.g., 2024-12-31). Use 01 for January, not 1. Use 01 for single digit days, not 1.
+        limit: Maximum number of data points to return (default: 252)
     
     Returns:
         Market data from external service via Gateway
     """
     import time
     
-    if symbol:
-        print(f"🌐 AgentCore Gateway: Fetching {symbol} data via MCP...")
-        target_param = symbol
-        param_type = "symbol"
-    else:
-        print(f"🌐 AgentCore Gateway: No symbol or sector specified, using AMZN...")
-        target_param = "AMZN"
-        param_type = "symbol"
+    if not symbol:
+        print(f"🌐 AgentCore Gateway: No symbol specified, using AMZN...")
+        symbol = "AMZN"
     
-    # print("⏳ Fetching market data (synchronous)...")
+    print(f"🌐 AgentCore Gateway: Fetching {symbol} data via MCP (start: {start_date}, end: {end_date}, limit: {limit})...")
+    
     start_time = time.time()
     
     try:
-        # Call synchronous function directly (no asyncio.run needed)
-        gateway_response = call_gateway_market_data_with_cognito(target_param, param_type)
+        # Call synchronous function directly with date range parameters
+        gateway_response = call_gateway_market_data_with_cognito(symbol, start_date, end_date, limit)
         
         # Extract structured data from gateway response
         global _stored_market_data
@@ -454,7 +466,7 @@ def fetch_market_data_via_gateway(symbol: str = None, investment_area: str = Non
         time.sleep(0.5)  # Brief pause to ensure completion
 
         # Extract metadata for detailed success message
-        symbol_key = list(_stored_market_data.keys())[0] if _stored_market_data else target_param
+        symbol_key = list(_stored_market_data.keys())[0] if _stored_market_data else symbol
         if symbol_key in _stored_market_data:
             metadata = _stored_market_data[symbol_key].get('metadata', {})
             total_rows = metadata.get('total_rows', 0)
@@ -495,8 +507,7 @@ def generate_trading_strategy(query: str) -> str:
     Returns:
         Complete Backtrader strategy Python code ready for backtesting
     """
-    global _strategy_call_count
-
+    
     agent_name = "🧠 STRATEGY GENERATOR AGENT"
     print("\n" + "="*50)
     print(agent_name)
@@ -505,7 +516,6 @@ def generate_trading_strategy(query: str) -> str:
     input_data = query
     reasoning = "Converting user trading idea into executable strategy code..."
     
-    print(f"\n� {agent_name} CALL #{_strategy_call_count}")
     print("="*50)
     print(f"📥 INPUT: {input_data}")
     print(f"🧠 REASONING: {reasoning}")
@@ -617,10 +627,6 @@ def run_backtest(symbol: str, strategy_code: str, params: dict = None) -> dict:
         print("❌ NO MARKET DATA AVAILABLE - Cannot run backtest")
         return {'error': 'No market data available for backtesting'}
     
-    # print(f"📊 Using {len(daily_data)} data points for {symbol_key}")
-    
-    # Convert transformed_data to pandas DataFrame for Backtrader
-    # The daily_data already has the correct column names: date, symbol, open, high, low, close, volume, adj_close
     df = pd.DataFrame(daily_data)
     
     # Convert date column to datetime and set as index
@@ -646,33 +652,12 @@ def run_backtest(symbol: str, strategy_code: str, params: dict = None) -> dict:
     for col in df.columns:
         print(f"     {col}: {df[col].dtype}")
     
-    # # Check for missing values
-    # missing_values = df.isnull().sum()
-    # if missing_values.any():
-    #     print(f"⚠️ WARNING - Missing values found:")
-    #     for col, count in missing_values.items():
-    #         if count > 0:
-    #             print(f"     {col}: {count} missing values")
-    # else:
-    #     print(f"✅ No missing values found")
-    
     # Print sample data for inspection
     print(f"\n📊 Sample data (first 3 rows):")
     try:
         print(df.head(3).to_string())
     except Exception as e:
         print(f"❌ Error displaying sample data: {e}")
-    
-    # # Validate required columns for Backtrader
-    # required_columns = ['open', 'high', 'low', 'close', 'volume']
-    # missing_columns = [col for col in required_columns if col not in df.columns]
-    # if missing_columns:
-    #     print(f"❌ ERROR - Missing required columns for Backtrader: {missing_columns}")
-    #     return {'error': f'Missing required columns: {missing_columns}'}
-    # else:
-    #     print(f"✅ All required Backtrader columns present: {required_columns}")
-    
-    # print(f"🔍 DEBUG - End of DataFrame analysis\n")
     
     # Prepare backtest input
     backtest_input = {
@@ -874,29 +859,6 @@ if __name__ == "__main__":
     print("🚀 Starting Strands Multi-Agent Quant Backtesting Agent on AgentCore")
     print(f"   App type: {type(app)}")
     print(f"   App methods: {[m for m in dir(app) if not m.startswith('_')]}")
-    
-    # # Test invoke function directly first
-    # print("\n🧪 Testing invoke function directly...")
-    # try:
-    #     test_payload = {"prompt": """how is the strategy performance: 
-    #      {
-    #         "name": "EMA Crossover Strategy",
-    #         "stock_symbol": "AMZN",
-    #         "backtest_window": "1Y",
-    #         "max_positions": 1,
-    #         "stop_loss": 5,
-    #         "take_profit": 10,
-    #         "buy_conditions": "10-period SMA crosses above 30-period SMA (bullish momentum)",
-    #         "sell_conditions": "10-period SMA crosses below 30-period SMA (bearish momentum)",
-    #         average 30"
-    #         }
-    #      """}
-    #     result = invoke(test_payload)
-    #     print(f"✅ Direct invoke test successful: {result}")
-    # except Exception as e:
-    #     print(f"❌ Direct invoke test failed: {e}")
-    #     import traceback
-    #     traceback.print_exc()
     
     print("\n🌐 Starting server on port 8080...")
     try:

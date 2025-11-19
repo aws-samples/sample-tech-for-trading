@@ -2,7 +2,6 @@
 Results Summary Agent - Analyzes and summarizes backtest results
 """
 
-from base_agent import BaseAgent, AWS_REGION
 import os
 from typing import Dict, Any
 from strands import Agent
@@ -17,19 +16,14 @@ load_dotenv()
 app = BedrockAgentCoreApp()
 
 
-class ResultsSummaryAgent(BaseAgent):
+class ResultsSummaryAgent():
     """Agent that analyzes backtest results and provides summaries"""
     
     def __init__(self):
          instructions = """
          You are an expert quantitative analyst with 20+ years of experience in algorithmic trading, portfolio management, and strategy optimization. Your role is to review Backtrader backtesting results and provide professional, actionable advice to improve trading strategies.
 
-## Your Expertise Includes:
-- Trading strategies
-- Risk management and position sizing
-- Market microstructure and execution
-
-## When Analyzing Backtrader Results, You Will:
+When Analyzing Backtrader Results, You Will:
 
 - Evaluate total return and risk-adjusted returns (Sharpe, Sortino, etc)
 - Assess consistency across different market regimes
@@ -42,30 +36,7 @@ class ResultsSummaryAgent(BaseAgent):
 - Look for survivorship bias, look-ahead bias, or data snooping
 - Assess statistical significance of results
 
-## Your Response Format:
-
-### 📊 EXECUTIVE SUMMARY
-[2-3 sentences on overall strategy viability]
-
-### ⚠️ CONCERNS & RED FLAGS
-[Critical issues that need attention]
-
-### 🔍 DETAILED ANALYSIS
-[Deep dive into metrics with specific numbers and interpretations]
-
-### 💡 RECOMMENDATIONS
-[Prioritized, actionable suggestions for improvement]
-1. High Priority: [Critical fixes]
-2. Medium Priority: [Optimizations]
-3. Consider Testing: [Experimental ideas]
-
-## Your Communication Style:
-- Be direct but constructive
-- Use specific numbers and references from the results
-- Always consider real-world implementation challenges
-- When uncertain, acknowledge limitations and suggest additional tests
-
-## Red Flags to Always Check:
+Red Flags to Always Check:
 - Sharpe ratio >3 (potential overfitting)
 - Win rate >70% (suspicious for most strategies)
 - Smooth equity curves without realistic drawdowns
@@ -74,22 +45,37 @@ class ResultsSummaryAgent(BaseAgent):
 - Strategies that only work in specific years
 - Ignoring transaction costs or using unrealistic assumptions
 
+## Please STRICTLY FOLLOW the Response Format:
+
+### 📊 EXECUTIVE SUMMARY
+[2-3 sentences on overall strategy viability]
+
+### 🔍 DETAILED ANALYSIS
+[Deep dive into metrics with specific numbers and interpretations]
+
+### 💡 CONCERNS & RECOMMENDATIONS
+[Prioritized, actionable suggestions for improvement]
+1. High Priority: [Critical fixes]
+2. Medium Priority: [Optimizations]
+3. Consider Testing: [Experimental ideas]
+
 When the user provides results, ask clarifying questions if needed, then deliver your analysis with the authority and insight of a senior quant reviewing a junior trader's work.
          """
          
          # Get Results Summary specific configuration from environment
+         aws_region = os.getenv('AWS_REGION', 'us-east-1')
          model_id = os.getenv('RESULTS_SUMMARY_MODEL_ID', 'us.amazon.nova-pro-v1:0')
          temperature = float(os.getenv('RESULTS_SUMMARY_TEMPERATURE', '0.3'))
          
          print(f"🔧 Results Summary Configuration:")
          print(f"   Model ID: {model_id}")
-         print(f"   Region: {AWS_REGION}")
+         print(f"   Region: {aws_region}")
          print(f"   Temperature: {temperature}")
          
          # Create dedicated model for Results Summary
          results_model = BedrockModel(
              model_id=model_id,
-             region_name=AWS_REGION,
+             region_name=aws_region,
              temperature=temperature,
          )
 
@@ -118,8 +104,6 @@ When the user provides results, ask clarifying questions if needed, then deliver
             # Create a comprehensive prompt for AI analysis
             prompt = f"""Please analyze the following Backtrader backtest results and provide your expert assessment:
 
-## Backtest Results Data
-
 **Strategy Name**: {strategy_name}
 **Symbol Traded**: {symbol}
 **Initial Capital**: ${initial_value:,.2f}
@@ -127,11 +111,9 @@ When the user provides results, ask clarifying questions if needed, then deliver
 **Total Return**: {total_return:.2f}%
 **Profit/Loss**: ${final_value - initial_value:,.2f}
 
-### Performance Metrics:
+Performance Metrics:
 {json.dumps(metrics, indent=2)}
 
-### Raw Results:
-{json.dumps(backtest_results, indent=2)}
 """
             
             # Use AI to analyze the results

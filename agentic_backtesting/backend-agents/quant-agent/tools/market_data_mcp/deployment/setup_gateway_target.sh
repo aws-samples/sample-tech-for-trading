@@ -72,7 +72,7 @@ cat > lambda-target-config.json << EOF
         "inlinePayload": [
             {
                 "name": "get_market_data",
-                "description": "Get comprehensive tick data for backtesting including price history, technical indicators, and statistics for a specific stock symbol",
+                "description": "Get comprehensive daily data for backtesting of a specific stock symbol",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -80,9 +80,17 @@ cat > lambda-target-config.json << EOF
                             "type": "string",
                             "description": "Stock symbol to get tick data for. Examples: AAPL, MSFT, GOOGL, NVDA, JNJ, PFE, JPM, BAC, XOM, CVX"
                         },
-                        "investment_area": {
+                        "start_date": {
                             "type": "string",
-                            "description": "Investment sector (backward compatibility). Options: Technology, Healthcare, Finance, Energy"
+                            "description": "Start date for data retrieval in format YYYY-MM-DD (e.g., 2024-01-15). For example, Use 01 for January, not 1. Use 01 for single digit days, not 1."
+                        },
+                        "end_date": {
+                            "type": "string",
+                            "description": "End date for data retrieval in format YYYY-MM-DD (e.g., 2024-12-31). For example, Use 01 for January, not 1. Use 01 for single digit days, not 1."
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of data points to return (default: 252)"
                         }
                     },
                     "required": []
@@ -96,9 +104,8 @@ EOF
 echo "📊 Lambda target configuration:"
 cat lambda-target-config.json | jq '.'
 
-# Create MCP Gateway Target
+# Create MCP Gateway Target with unique name
 echo "🎯 Creating MCP Gateway target..."
-echo "📋 Command: agentcore gateway create-mcp-gateway-target --gateway-arn \"$GATEWAY_ARN\" --gateway-url \"$GATEWAY_URL\" --role-arn \"$GATEWAY_ROLE_ARN\" --region \"$AWS_REGION\" --name \"$TARGET_NAME\" --target-type \"lambda\" --target-payload \"$(cat lambda-target-config.json)\""
 
 # Run the command and capture both stdout and stderr
 set +e  # Temporarily disable exit on error to capture output
