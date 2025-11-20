@@ -500,8 +500,8 @@ def generate_trading_strategy(query: str) -> str:
             "max_positions": 1,
             "stop_loss": 5,
             "take_profit": 10,
-            "buy_conditions":  "EMA50 > EMA200",
-            "sell_conditions": "EMA50 < EMA200"
+            "buy_conditions":  "Price above 20-day moving average and RSI below 70",
+            "sell_conditions": "Price below 20-day moving average or RSI above 80"
         }
 
     Returns:

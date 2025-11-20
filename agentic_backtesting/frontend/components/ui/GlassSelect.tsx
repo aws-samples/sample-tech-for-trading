@@ -8,6 +8,7 @@ interface Option {
   value: string;
   label: string;
   description?: string;
+  disabled?: boolean;
 }
 
 interface GlassSelectProps {
@@ -91,21 +92,38 @@ const GlassSelect: React.FC<GlassSelectProps> = ({
               {options.map((option, index) => (
                 <motion.div
                   key={option.value}
-                  className={`p-4 cursor-pointer hover:bg-white/10 transition-all duration-200 border-b border-white/5 last:border-b-0 ${
+                  className={`p-4 transition-all duration-200 border-b border-white/5 last:border-b-0 ${
                     index === 0 ? 'rounded-t-2xl' : ''
                   } ${
                     index === options.length - 1 ? 'rounded-b-2xl' : ''
+                  } ${
+                    option.disabled 
+                      ? 'cursor-not-allowed opacity-50' 
+                      : 'cursor-pointer hover:bg-white/10'
                   }`}
                   onClick={() => {
-                    onChange(option.value);
-                    setIsOpen(false);
+                    if (!option.disabled) {
+                      onChange(option.value);
+                      setIsOpen(false);
+                    }
                   }}
-                  whileHover={{ x: 2 }}
-                  whileTap={{ scale: 0.98 }}
+                  whileHover={option.disabled ? {} : { x: 2 }}
+                  whileTap={option.disabled ? {} : { scale: 0.98 }}
                 >
-                  <div className="text-white font-medium">{option.label}</div>
+                  <div className={`font-medium flex items-center justify-between ${
+                    option.disabled ? 'text-gray-500' : 'text-white'
+                  }`}>
+                    <span>{option.label}</span>
+                    {option.disabled && (
+                      <span className="text-xs text-gray-600 ml-2">(Coming Soon)</span>
+                    )}
+                  </div>
                   {option.description && (
-                    <div className="text-gray-400 text-sm mt-1">{option.description}</div>
+                    <div className={`text-sm mt-1 ${
+                      option.disabled ? 'text-gray-600' : 'text-gray-400'
+                    }`}>
+                      {option.description}
+                    </div>
                   )}
                 </motion.div>
               ))}

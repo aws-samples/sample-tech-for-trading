@@ -1,84 +1,132 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import GlassCard from '@/components/ui/GlassCard';
 import AnimatedButton from '@/components/ui/AnimatedButton';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
-import { StrategyInput, AgentOutput } from '@/types/strategy';
-import { useBacktest } from '@/lib/BacktestContext';
+import { AgentOutput } from '@/types/strategy';
 
-export default function ResultsDisplay() {
+function ResultsDisplayContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { result: contextResult, error: contextError } = useBacktest();
   const [results, setResults] = useState<AgentOutput | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [strategyInput, setStrategyInput] = useState<StrategyInput | null>(null);
 
   useEffect(() => {
-    const loadResults = () => {
-      const strategyParam = searchParams.get('strategy');
-      
-      if (!strategyParam) {
-        setError('No strategy data provided');
-        setLoading(false);
-        return;
-      }
+    const jobId = searchParams.get('jobId');
+    const strategyParam = searchParams.get('strategy');
+    
+    if (!jobId || !strategyParam) {
+      setError('Missing job information');
+      setLoading(false);
+      return;
+    }
 
+    let strategy;
+    try {
+      strategy = JSON.parse(strategyParam);
+    } catch (err) {
+      setError('Invalid strategy data');
+      setLoading(false);
+      return;
+    }
+
+    // Start polling for results
+    pollForResults(jobId, strategy);
+  }, [searchParams]);
+
+  const pollForResults = async (jobId: string, strategy: any) => {
+    const maxAttempts = 60; // 5 minutes max
+    const pollInterval = 5000; // 5 seconds
+    
+    for (let i = 0; i < maxAttempts; i++) {
       try {
-        const strategy = JSON.parse(strategyParam);
+        console.log(`[Results] 🔄 Polling attempt ${i + 1}/${maxAttempts} for job ${jobId}`);
         
-        if (!strategy?.name) {
-          throw new Error('Invalid strategy data');
-        }
+        const response = await fetch(`/api/execute-backtest-async?jobId=${jobId}`);
+        const result = await response.json();
         
-        setStrategyInput(strategy);
+        console.log('[Results] Poll result status:', result.status);
         
-        // Check if we have result from context (workflow page)
-        if (contextResult) {
-          console.log('[Results] ✅ Using result from context (no API call)');
-          setResults(contextResult);
+        if (result.status === 'complete') {
+          console.log('[Results] ✅ Backtest complete!');
+          const parsedResult = parseAgentResponse(result.data.analysis, strategy);
+          setResults(parsedResult);
           setLoading(false);
           return;
         }
         
-        // Check if there was an error from context
-        if (contextError) {
-          console.log('[Results] Error from context:', contextError);
-          setError(contextError);
+        if (result.status === 'error') {
+          console.log('[Results] ❌ Backtest failed:', result.error);
+          setError(result.error || 'Backtest failed');
           setLoading(false);
           return;
         }
         
-        // If no context result, wait for it (API might still be running)
-        console.log('[Results] Waiting for API result from workflow...');
-        const checkInterval = setInterval(() => {
-          if (contextResult) {
-            console.log('[Results] ✅ Received result from context');
-            setResults(contextResult);
-            setLoading(false);
-            clearInterval(checkInterval);
-          } else if (contextError) {
-            setError(contextError);
-            setLoading(false);
-            clearInterval(checkInterval);
-          }
-        }, 100);
+        // Still processing, wait and continue
+        if (i < maxAttempts - 1) {
+          await new Promise(resolve => setTimeout(resolve, pollInterval));
+        }
         
-        // No timeout - let it run as long as needed
-        
-      } catch (err) {
-        console.error('[Results] Error:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load results');
-        setLoading(false);
+      } catch (pollError) {
+        console.error('[Results] Polling error:', pollError);
+        // Continue polling on network errors
       }
+    }
+    
+    // Timeout
+    console.log('[Results] ⏰ Polling timeout');
+    setError('Backtest timed out after 5 minutes');
+    setLoading(false);
+  };
+
+  const parseAgentResponse = (analysisText: string, strategy: any): AgentOutput => {
+    // Extract metrics using regex patterns
+    const extractMetric = (patterns: RegExp[]): string => {
+      for (const pattern of patterns) {
+        const match = analysisText.match(pattern);
+        if (match) {
+          return match[1].trim().replace(/\*\*/g, '').replace(/,/g, '');
+        }
+      }
+      return 'N/A';
     };
 
-    loadResults();
-  }, [searchParams, contextResult, contextError]);
+    const initialCapital = extractMetric([
+      /Initial Investment[:\s*]+\$?([\d,]+)/i,
+      /Initial Capital[:\s*]+\$?([\d,]+)/i,
+    ]) || '100000';
+    
+    const finalValue = extractMetric([
+      /Final Value[:\s*]+\$?([\d,]+\.?\d*)/i,
+      /Final Portfolio Value[:\s*]+\$?([\d,]+\.?\d*)/i,
+    ]);
+    
+    const totalReturn = extractMetric([
+      /Total Return[:\s*]+([+-]?[\d.]+%)/i,
+    ]);
+    
+    const maxDrawdown = extractMetric([
+      /Maximum Drawdown[:\s*]+([\d.]+%)/i,
+      /Max Drawdown[:\s*]+([\d.]+%)/i,
+    ]);
+
+    return {
+      initial_investment: initialCapital,
+      final_portfolio_value: finalValue,
+      total_return: totalReturn,
+      maximum_drawdown: maxDrawdown,
+      symbol: strategy.stock_symbol,
+      strategy_type: strategy.name,
+      stop_loss: `${strategy.stop_loss}%`,
+      take_profit: `${strategy.take_profit}%`,
+      max_positions: strategy.max_positions,
+      analysis_text: analysisText
+    };
+  };
 
   const handleNewStrategy = () => {
     router.push('/');
@@ -257,45 +305,19 @@ export default function ResultsDisplay() {
             className="mb-12"
           >
             <GlassCard className="p-8">
-              <h3 className="text-2xl font-semibold text-white mb-6">🤖 AI Agent Analysis</h3>
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="w-12 h-12 bg-gradient-to-r from-accent-purple to-accent-blue rounded-lg flex items-center justify-center">
+                  <span className="text-2xl">🤖</span>
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-white">AI Agent Analysis</h3>
+                  <p className="text-gray-400">Powered by AgentCore Intelligence</p>
+                </div>
+              </div>
+              
               <div className="prose prose-invert max-w-none">
-                <div className="text-gray-300 space-y-4 markdown-content">
-                  {results.analysis_text.split('\n').map((line, index) => {
-                    // Headers
-                    if (line.startsWith('### ')) {
-                      return <h3 key={index} className="text-xl font-semibold text-white mt-6 mb-3">{line.replace(/^###\s+/, '').replace(/\*\*/g, '')}</h3>;
-                    }
-                    if (line.startsWith('## ')) {
-                      return <h2 key={index} className="text-2xl font-bold text-accent-blue mt-8 mb-4">{line.replace(/^##\s+/, '').replace(/\*\*/g, '')}</h2>;
-                    }
-                    // Bold text
-                    if (line.includes('**')) {
-                      const parts = line.split(/(\*\*.*?\*\*)/g);
-                      return (
-                        <p key={index} className="text-gray-300 leading-relaxed">
-                          {parts.map((part, i) => 
-                            part.startsWith('**') && part.endsWith('**') ? (
-                              <strong key={i} className="text-white font-semibold">{part.replace(/\*\*/g, '')}</strong>
-                            ) : part
-                          )}
-                        </p>
-                      );
-                    }
-                    // List items
-                    if (line.match(/^\d+\.\s+/)) {
-                      return <li key={index} className="text-gray-300 ml-6 mb-2">{line.replace(/^\d+\.\s+/, '')}</li>;
-                    }
-                    // Bullet points
-                    if (line.startsWith('- ')) {
-                      return <li key={index} className="text-gray-300 ml-6 mb-2 list-disc">{line.replace(/^-\s+/, '')}</li>;
-                    }
-                    // Empty lines
-                    if (line.trim() === '') {
-                      return <div key={index} className="h-2" />;
-                    }
-                    // Regular text
-                    return <p key={index} className="text-gray-300 leading-relaxed">{line}</p>;
-                  })}
+                <div className="text-gray-300 leading-relaxed whitespace-pre-line">
+                  {results.analysis_text}
                 </div>
               </div>
             </GlassCard>
@@ -321,5 +343,17 @@ export default function ResultsDisplay() {
         </motion.div>
       </div>
     </div>
+  );
+}
+
+export default function ResultsDisplay() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-dark-primary via-dark-secondary to-dark-tertiary flex items-center justify-center">
+        <LoadingSpinner size="lg" text="Loading results..." />
+      </div>
+    }>
+      <ResultsDisplayContent />
+    </Suspense>
   );
 }

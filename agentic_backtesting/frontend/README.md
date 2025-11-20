@@ -30,11 +30,18 @@ npm install
 Copy `.env.example` to `.env.local` and add your credentials:
 
 ```env
+# For local development (server-side)
 AWS_REGION=us-east-1
 AGENTCORE_ARN=arn:aws:bedrock-agentcore:us-east-1:600627331406:runtime/quant_agent-D6li6lBv47
 AWS_ACCESS_KEY_ID=your_access_key
 AWS_SECRET_ACCESS_KEY=your_secret_key
 NEXT_PUBLIC_USE_MOCK_DATA=false
+
+# For static deployment (client-side) - add NEXT_PUBLIC_ prefix
+NEXT_PUBLIC_AWS_REGION=us-east-1
+NEXT_PUBLIC_AGENTCORE_ARN=arn:aws:bedrock-agentcore:us-east-1:600627331406:runtime/quant_agent-D6li6lBv47
+NEXT_PUBLIC_AWS_ACCESS_KEY_ID=your_access_key
+NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY=your_secret_key
 ```
 
 ### 3. Run Development Server
@@ -150,42 +157,60 @@ curl -X POST http://localhost:3000/api/execute-backtest \
     "max_positions": 1,
     "stop_loss": 5,
     "take_profit": 10,
-    "buy_conditions": "EMA50 > EMA200",
-    "sell_conditions": "EMA50 < EMA200"
+    "buy_conditions": "Price above 20-day moving average and RSI below 70",
+    "sell_conditions": "Price below 20-day moving average or RSI above 80"
   }'
 ```
 
 ## 🚀 Deployment
 
-### Option 1: Vercel (Recommended)
+### AWS S3 + CloudFront (Recommended)
+
+Deploy as a static site to S3 with CloudFront CDN:
+
+```bash
+# 1. Configure environment variables
+cp .env.example .env.local
+# Edit .env.local with your AWS credentials
+
+# 2. Deploy
+./deploy.sh
+```
+
+The script will:
+- ✅ Build Next.js as static export
+- ✅ Create S3 bucket + CloudFront distribution
+- ✅ Upload files with proper caching
+- ✅ Invalidate CloudFront cache
+- ✅ Give you the website URL
+
+**First deployment:** Wait 5-10 minutes for CloudFront to deploy globally.
+
+**Updates:** Just run `./deploy.sh` again - changes are live in 1-2 minutes.
+
+**Cost:** ~$1-2/month for moderate usage (S3 + CloudFront)
+
+**Important Notes:**
+- Environment variables must be prefixed with `NEXT_PUBLIC_` for static export
+- Variables are embedded at build time (rebuild to update)
+- AWS credentials are in client-side code (consider Cognito for production)
+
+### Alternative: Vercel
+
+For server-side rendering (SSR) support:
 
 ```bash
 # Install Vercel CLI
 npm install -g vercel
 
 # Deploy
-./deploy.sh
-# Choose option 1
-
-# Or manually
 vercel --prod
 ```
 
-**Environment Variables in Vercel:**
-- `AWS_REGION`
-- `AGENTCORE_ARN`
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
+Add environment variables in Vercel dashboard (without `NEXT_PUBLIC_` prefix).
 
-### Option 2: AWS Amplify
+### Alternative: AWS Amplify
 
-```bash
-./deploy.sh
-# Choose option 2
-# Follow the instructions
-```
-
-Or manually:
 1. Go to [AWS Amplify Console](https://console.aws.amazon.com/amplify/)
 2. Connect your GitHub repository
 3. Framework: Next.js SSR
@@ -194,24 +219,58 @@ Or manually:
 
 ## 🐛 Troubleshooting
 
-### "AgentCore ARN not configured"
+### Development Issues
+
+**"AgentCore ARN not configured"**
 - Check `.env.local` has `AGENTCORE_ARN` set
 
-### "Access denied"
+**"Access denied"**
 - Verify AWS credentials in `.env.local`
 - Check IAM permissions include `bedrock-agentcore:InvokeAgentRuntime`
 
-### "Module not found"
+**"Module not found"**
 - Run `npm install`
 
-### "Port 3000 already in use"
+**"Port 3000 already in use"**
 - Kill process: `lsof -ti:3000 | xargs kill -9`
 - Or use different port: `npm run dev -- -p 3001`
 
-### Double API Calls
+**Double API Calls**
 - This is React StrictMode in development (normal)
 - Production builds only call once
 - We use `useRef` to prevent duplicates
+
+### Deployment Issues
+
+**Build fails**
+```bash
+# Clear cache and rebuild
+rm -rf .next out node_modules
+npm install
+npm run build
+```
+
+**CloudFront shows old content**
+```bash
+# Manually invalidate cache
+aws cloudfront create-invalidation \
+  --distribution-id YOUR_DIST_ID \
+  --paths "/*"
+```
+
+**API calls fail after deployment**
+- Check `NEXT_PUBLIC_` prefix on all environment variables
+- Verify credentials are correct in `.env.local`
+- Rebuild and redeploy after changing environment variables
+
+**404 errors on page refresh**
+- This is normal - CloudFormation template handles it
+- Custom error responses redirect 404s to index.html
+
+**Deployment script fails**
+- Ensure AWS CLI is configured: `aws configure`
+- Check IAM permissions for S3, CloudFront, CloudFormation
+- Verify Node.js 18+ is installed
 
 ### Logs
 
@@ -246,10 +305,60 @@ how is the strategy performance: {...}
 
 ## 🔐 Security
 
-- **Server-side only** - AWS credentials never exposed to browser
-- **Environment variables** - Sensitive data in `.env.local`
-- **IAM roles** - Use IAM roles in production (no access keys)
-- **HTTPS** - Always use HTTPS in production
+### Current Architecture (Static Export)
+
+When deployed to S3 + CloudFront, the app uses **client-side AWS SDK**:
+
+```
+Browser → AWS SDK (with embedded credentials) → AgentCore Runtime
+```
+
+**How it works:**
+- AWS credentials are embedded in JavaScript at build time (`NEXT_PUBLIC_*` variables)
+- Browser directly calls AgentCore using AWS SDK for JavaScript v3
+- No backend server needed
+
+**Security considerations:**
+- ⚠️ Credentials visible in browser source code
+- ⚠️ All users share same credentials
+- ⚠️ Can't rotate without rebuild
+- ✅ Acceptable for development/demos
+- ✅ Simple architecture, low cost
+
+### Production Recommendations
+
+For production deployments, consider these alternatives:
+
+**Option 1: API Gateway + Lambda** (Most Secure)
+```
+Browser → API Gateway → Lambda (IAM role) → AgentCore
+```
+- ✅ No credentials in browser
+- ✅ User authentication via Cognito
+- ✅ Rate limiting and monitoring
+- ⚠️ More complex setup
+- ⚠️ Higher cost (~$5/month)
+
+**Option 2: Cognito Identity Pool** (Balanced)
+```
+Browser → Cognito (temporary credentials) → AgentCore
+```
+- ✅ Temporary credentials
+- ✅ User-specific access
+- ✅ Simpler than API Gateway
+- ✅ Low cost (~$1.50/month)
+
+**Current approach is fine for:**
+- Development and testing
+- Internal demos
+- Proof of concepts
+- Low-risk applications
+
+**Migrate to production architecture when:**
+- Deploying to external users
+- Need user authentication
+- Require audit trails
+- Security compliance needed
 
 ## 📝 Environment Variables
 
