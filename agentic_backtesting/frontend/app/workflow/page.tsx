@@ -41,12 +41,10 @@ function WorkflowProgressContent() {
         title: "Orchestrator Agent",
         icon: "🤖",
         color: "#00d4ff",
-        description: "The intelligent central coordinator that analyzes your request and dynamically selects the right tools and agents to execute your trading strategy analysis.",
+        description: "The central coordinator that analyzes your request and dynamically selects the right tools and agents to execute your trading strategy analysis.",
         details: [
-          "Analyzes strategy requirements intelligently",
           "Makes real-time decisions about tool selection",
           "Coordinates multiple specialized agents",
-          "Adapts execution based on strategy complexity",
           "Handles error recovery and retry logic"
         ],
         agentCoreRole: "Powered by AgentCore Runtime - serverless, scalable agent execution with dedicated microVM isolation for security."
@@ -55,12 +53,11 @@ function WorkflowProgressContent() {
         title: "Market Data Tool",
         icon: "📊",
         color: "#10b981",
-        description: "Provides access to historical market data, technical indicators, and price information through AgentCore Gateway's seamless API integration.",
+        description: "Fetch historical market data in S3 Table deployed on AgentCore Gateway",
         details: [
-          "Fetches historical price data",
-          "Calculates technical indicators (EMA, SMA, RSI)",
-          "Handles rate limiting and authentication",
-          "Transforms raw data into agent-friendly format"
+          "Fetches historical market data",
+          "Use Lambda function as Gateway target",
+          "Leverage Cognito for authentication"
         ],
         agentCoreRole: "AgentCore Gateway transforms external market data APIs into MCP-compatible tools, eliminating integration complexity."
       },
@@ -68,24 +65,22 @@ function WorkflowProgressContent() {
         title: "Strategy Generation Agent",
         icon: "⚙️",
         color: "#00d4ff",
-        description: "A specialized AI agent that converts your natural language trading conditions into executable Python code using the Backtrader framework.",
+        description: "Converts your natural language trading idea into executable Python code of the Backtrader framework.",
         details: [
           "Interprets buy/sell conditions from natural language",
-          "Generates optimized Backtrader strategy code",
+          "Generates Backtrader strategy code",
           "Implements risk management rules",
-          "Handles position sizing and portfolio management"
         ],
         agentCoreRole: "Another agent running on AgentCore Runtime, demonstrating multi-agent coordination capabilities."
       },
       backtest_tool: {
-        title: "Backtest Tool (Strands)",
+        title: "Backtest Tool",
         icon: "🔬",
         color: "#f59e0b",
-        description: "Executes the trading strategy simulation using the Strands framework, running comprehensive backtests against historical market data.",
+        description: "Run backtests against historical market data with Backtrader framework.",
         details: [
-          "Simulates trades over historical periods",
+          "Generates trades over historical periods",
           "Calculates comprehensive performance metrics",
-          "Evaluates risk parameters and drawdowns",
           "Generates detailed execution reports"
         ],
         agentCoreRole: "Integrated as a tool within AgentCore Runtime, showing the platform's flexibility with different frameworks."
@@ -94,12 +89,11 @@ function WorkflowProgressContent() {
         title: "Result Summary Agent",
         icon: "📈",
         color: "#00d4ff",
-        description: "Analyzes backtest results and generates comprehensive insights, recommendations, and performance summaries for easy understanding.",
+        description: "Analyzes backtest results and generates recommendations for improvement.",
         details: [
           "Processes raw backtest data",
-          "Generates human-readable analysis",
           "Provides actionable recommendations",
-          "Creates performance summaries and insights"
+          "Creates JSON formatted results"
         ],
         agentCoreRole: "Final agent in the orchestration, running on AgentCore Runtime to provide intelligent analysis of results."
       },
@@ -107,14 +101,13 @@ function WorkflowProgressContent() {
         title: "AgentCore Memory",
         icon: "💾",
         color: "#8b5cf6",
-        description: "Persistent knowledge storage that maintains strategy history, results, and learnings across sessions for continuous improvement.",
+        description: "Persistent knowledge storage that maintains backtesting results.",
         details: [
           "Stores backtest results persistently",
           "Enables semantic search of past strategies",
           "Maintains execution history and patterns",
-          "Supports cross-session learning and optimization"
         ],
-        agentCoreRole: "AgentCore Memory provides the knowledge foundation, allowing the orchestrator to learn from past executions."
+        agentCoreRole: "AgentCore Memory provides both short and long memory features."
       }
     };
     return components[componentId];
@@ -131,7 +124,7 @@ function WorkflowProgressContent() {
           transition={{ duration: 0.8 }}
         >
           <h1 className="text-5xl font-bold bg-gradient-to-r from-accent-blue to-accent-purple bg-clip-text text-transparent mb-4">
-            🏗️ AgentCore Architecture
+            🏗️ Multi-Agent Architecture by Strands and AgentCore
           </h1>
           <p className="text-xl text-gray-300">
             Explore the intelligent orchestrator architecture powering your trading strategy analysis
@@ -151,46 +144,8 @@ function WorkflowProgressContent() {
               <p className="text-sm md:text-base text-gray-400">Tap any component to learn more about its role</p>
             </div>
 
-            {/* Mobile: Show components as a list */}
-            <div className="block md:hidden space-y-4 mb-8">
-              {[
-                { id: 'client', name: 'Client Frontend', icon: '💻', color: '#6b7280' },
-                { id: 'orchestrator', name: 'Orchestrator Agent', icon: '🤖', color: '#00d4ff' },
-                { id: 'gateway', name: 'Market Data Tool', icon: '📊', color: '#10b981' },
-                { id: 'strategy_agent', name: 'Strategy Agent', icon: '⚙️', color: '#00d4ff' },
-                { id: 'backtest_tool', name: 'Backtest Tool', icon: '🔬', color: '#f59e0b' },
-                { id: 'summary_agent', name: 'Result Summary Agent', icon: '📈', color: '#00d4ff' },
-                { id: 'memory', name: 'AgentCore Memory', icon: '💾', color: '#8b5cf6' }
-              ].map((component) => (
-                <motion.button
-                  key={component.id}
-                  className="w-full p-4 rounded-xl border-2 text-left transition-all duration-200 hover:scale-105"
-                  style={{ 
-                    backgroundColor: component.color + '15',
-                    borderColor: component.color + '40'
-                  }}
-                  onClick={() => setSelectedComponent(component.id)}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <div className="flex items-center space-x-4">
-                    <div 
-                      className="w-12 h-12 rounded-lg flex items-center justify-center"
-                      style={{ backgroundColor: component.color + '30' }}
-                    >
-                      <span className="text-2xl">{component.icon}</span>
-                    </div>
-                    <div>
-                      <h4 className="text-white font-semibold text-lg">{component.name}</h4>
-                      <p className="text-gray-400 text-sm">Tap to learn more</p>
-                    </div>
-                  </div>
-                </motion.button>
-              ))}
-            </div>
-
-            {/* Desktop: Show SVG diagram */}
-            <div className="hidden md:block relative w-full max-w-7xl mx-auto">
+            {/* Interactive SVG Diagram - Now visible on all devices */}
+            <div className="relative w-full max-w-7xl mx-auto overflow-x-auto">
               <svg viewBox="0 0 1400 900" className="w-full h-auto min-h-[500px] lg:min-h-[600px]">
                 {/* Background */}
                 <rect width="1400" height="900" fill="transparent" />

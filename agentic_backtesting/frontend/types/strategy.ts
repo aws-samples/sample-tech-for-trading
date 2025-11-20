@@ -31,6 +31,15 @@ export interface AgentOutput {
   stop_loss: string;
   take_profit: string;
   max_positions: number;
+  profit_loss?: string;
+  sharpe_ratio?: string;
+  executive_summary?: string;
+  detailed_analysis?: string;
+  concerns_and_recommendations?: {
+    highPriority?: string[];
+    mediumPriority?: string[];
+    considerTesting?: string[];
+  };
   analysis_text?: string; // Full markdown analysis from agent
 }
 

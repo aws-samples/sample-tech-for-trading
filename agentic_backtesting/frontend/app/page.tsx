@@ -18,8 +18,8 @@ export default function StrategyBuilder() {
     max_positions: 1,
     stop_loss: 5,
     take_profit: 10,
-    buy_conditions: 'Short-term moving average crosses above long-term moving average',
-    sell_conditions: 'Short-term moving average crosses below long-term moving average'
+    buy_conditions: '10 SMA crosses above 30 SMA',
+    sell_conditions: '10 SMA crosses below 30 SMA'
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validation, setValidation] = useState<ValidationResult>({
@@ -108,10 +108,10 @@ export default function StrategyBuilder() {
           transition={{ duration: 0.8 }}
         >
           <h1 className="text-5xl font-bold bg-gradient-to-r from-accent-blue to-accent-purple bg-clip-text text-transparent mb-4">
-            🎯 Trading Strategy Builder
+            🎯 Trading Strategy Backtesting
           </h1>
           <p className="text-xl text-gray-300 max-w-3xl">
-            Create your custom trading strategy and backtest it using AgentCore
+            Multi-agent trading strategy backtesting with Strands agent and Amazon Bedrock AgentCore
           </p>
         </motion.div>
 

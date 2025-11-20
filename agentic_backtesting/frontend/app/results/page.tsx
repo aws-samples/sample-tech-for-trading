@@ -84,48 +84,85 @@ function ResultsDisplayContent() {
   };
 
   const parseAgentResponse = (analysisText: string, strategy: any): AgentOutput => {
-    // Extract metrics using regex patterns
-    const extractMetric = (patterns: RegExp[]): string => {
-      for (const pattern of patterns) {
-        const match = analysisText.match(pattern);
-        if (match) {
-          return match[1].trim().replace(/\*\*/g, '').replace(/,/g, '');
-        }
+    try {
+      // Try to parse as JSON first
+      let jsonData;
+      
+      // Check if the response contains JSON wrapped in markdown code blocks
+      const jsonMatch = analysisText.match(/```json\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        jsonData = JSON.parse(jsonMatch[1]);
+      } else {
+        // Try parsing the entire text as JSON
+        jsonData = JSON.parse(analysisText);
       }
-      return 'N/A';
-    };
 
-    const initialCapital = extractMetric([
-      /Initial Investment[:\s*]+\$?([\d,]+)/i,
-      /Initial Capital[:\s*]+\$?([\d,]+)/i,
-    ]) || '100000';
-    
-    const finalValue = extractMetric([
-      /Final Value[:\s*]+\$?([\d,]+\.?\d*)/i,
-      /Final Portfolio Value[:\s*]+\$?([\d,]+\.?\d*)/i,
-    ]);
-    
-    const totalReturn = extractMetric([
-      /Total Return[:\s*]+([+-]?[\d.]+%)/i,
-    ]);
-    
-    const maxDrawdown = extractMetric([
-      /Maximum Drawdown[:\s*]+([\d.]+%)/i,
-      /Max Drawdown[:\s*]+([\d.]+%)/i,
-    ]);
+      // Extract data from the new JSON format
+      const backtestResult = jsonData.backtestResult || {};
+      
+      return {
+        initial_investment: backtestResult.initialCapital || '100000',
+        final_portfolio_value: backtestResult.finalPortfolioValue || 'N/A',
+        total_return: backtestResult.totalReturn || 'N/A',
+        maximum_drawdown: backtestResult.maxDrawdown || 'N/A',
+        symbol: backtestResult.symbolTraded || strategy.stock_symbol,
+        strategy_type: backtestResult.strategyName || strategy.name,
+        stop_loss: `${strategy.stop_loss}%`,
+        take_profit: `${strategy.take_profit}%`,
+        max_positions: strategy.max_positions,
+        profit_loss: backtestResult.profitLoss || 'N/A',
+        sharpe_ratio: backtestResult.SharpeRatio || 'N/A',
+        executive_summary: jsonData.executiveSummary || '',
+        detailed_analysis: jsonData.detailedAnalysis || '',
+        concerns_and_recommendations: jsonData.concernsAndRecommendations || {},
+        analysis_text: analysisText
+      };
+    } catch (error) {
+      console.error('[Results] Failed to parse JSON response, falling back to regex:', error);
+      
+      // Fallback to regex parsing for backward compatibility
+      const extractMetric = (patterns: RegExp[]): string => {
+        for (const pattern of patterns) {
+          const match = analysisText.match(pattern);
+          if (match) {
+            return match[1].trim().replace(/\*\*/g, '').replace(/,/g, '');
+          }
+        }
+        return 'N/A';
+      };
 
-    return {
-      initial_investment: initialCapital,
-      final_portfolio_value: finalValue,
-      total_return: totalReturn,
-      maximum_drawdown: maxDrawdown,
-      symbol: strategy.stock_symbol,
-      strategy_type: strategy.name,
-      stop_loss: `${strategy.stop_loss}%`,
-      take_profit: `${strategy.take_profit}%`,
-      max_positions: strategy.max_positions,
-      analysis_text: analysisText
-    };
+      const initialCapital = extractMetric([
+        /Initial Investment[:\s*]+\$?([\d,]+)/i,
+        /Initial Capital[:\s*]+\$?([\d,]+)/i,
+      ]) || '100000';
+      
+      const finalValue = extractMetric([
+        /Final Value[:\s*]+\$?([\d,]+\.?\d*)/i,
+        /Final Portfolio Value[:\s*]+\$?([\d,]+\.?\d*)/i,
+      ]);
+      
+      const totalReturn = extractMetric([
+        /Total Return[:\s*]+([+-]?[\d.]+%)/i,
+      ]);
+      
+      const maxDrawdown = extractMetric([
+        /Maximum Drawdown[:\s*]+([\d.]+%)/i,
+        /Max Drawdown[:\s*]+([\d.]+%)/i,
+      ]);
+
+      return {
+        initial_investment: initialCapital,
+        final_portfolio_value: finalValue,
+        total_return: totalReturn,
+        maximum_drawdown: maxDrawdown,
+        symbol: strategy.stock_symbol,
+        strategy_type: strategy.name,
+        stop_loss: `${strategy.stop_loss}%`,
+        take_profit: `${strategy.take_profit}%`,
+        max_positions: strategy.max_positions,
+        analysis_text: analysisText
+      };
+    }
   };
 
   const handleNewStrategy = () => {
@@ -241,9 +278,9 @@ function ResultsDisplayContent() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.9 }}
               >
-                <div className="text-gray-400 text-sm mb-1">Max Drawdown</div>
-                <div className="text-2xl font-bold text-red-400">
-                  {results.maximum_drawdown}
+                <div className="text-gray-400 text-sm mb-1">Profit/Loss</div>
+                <div className={`text-2xl font-bold ${parseFloat(results.profit_loss || '0') >= 0 ? 'text-accent-green' : 'text-red-400'}`}>
+                  ${results.profit_loss || 'N/A'}
                 </div>
               </motion.div>
               
@@ -252,6 +289,33 @@ function ResultsDisplayContent() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 1.0 }}
+              >
+                <div className="text-gray-400 text-sm mb-1">Max Drawdown</div>
+                <div className="text-2xl font-bold text-red-400">
+                  {results.maximum_drawdown}
+                </div>
+              </motion.div>
+            </div>
+            
+            {/* Additional Metrics Row */}
+            <div className="grid grid-cols-2 gap-6 mt-6 pt-6 border-t border-white/10">
+              <motion.div 
+                className="text-center"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 1.1 }}
+              >
+                <div className="text-gray-400 text-sm mb-1">Sharpe Ratio</div>
+                <div className="text-2xl font-bold text-accent-purple">
+                  {results.sharpe_ratio || 'N/A'}
+                </div>
+              </motion.div>
+              
+              <motion.div 
+                className="text-center"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 1.2 }}
               >
                 <div className="text-gray-400 text-sm mb-1">Symbol</div>
                 <div className="text-2xl font-bold text-accent-blue">
@@ -297,32 +361,122 @@ function ResultsDisplayContent() {
         </motion.div>
 
         {/* AI Agent Analysis */}
-        {results.analysis_text && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.5 }}
-            className="mb-12"
-          >
-            <GlassCard className="p-8">
-              <div className="flex items-center space-x-3 mb-6">
-                <div className="w-12 h-12 bg-gradient-to-r from-accent-purple to-accent-blue rounded-lg flex items-center justify-center">
-                  <span className="text-2xl">🤖</span>
+        <motion.div
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.5 }}
+          className="mb-12"
+        >
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="w-12 h-12 bg-gradient-to-r from-accent-purple to-accent-blue rounded-lg flex items-center justify-center">
+              <span className="text-2xl">🤖</span>
+            </div>
+            <div>
+              <h3 className="text-2xl font-bold text-white">AI Agent Analysis</h3>
+              <p className="text-gray-400">Powered by Strands and AgentCore</p>
+            </div>
+          </div>
+
+          {/* Executive Summary */}
+          {results.executive_summary && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.6 }}
+              className="mb-6"
+            >
+              <GlassCard className="p-6">
+                <div className="flex items-center space-x-2 mb-4">
+                  <span className="text-2xl">📊</span>
+                  <h4 className="text-xl font-semibold text-white">Executive Summary</h4>
                 </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-white">AI Agent Analysis</h3>
-                  <p className="text-gray-400">Powered by AgentCore Intelligence</p>
+                <p className="text-gray-300 leading-relaxed">
+                  {results.executive_summary}
+                </p>
+              </GlassCard>
+            </motion.div>
+          )}
+
+          {/* Detailed Analysis */}
+          {results.detailed_analysis && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.7 }}
+              className="mb-6"
+            >
+              <GlassCard className="p-6">
+                <div className="flex items-center space-x-2 mb-4">
+                  <span className="text-2xl">🔍</span>
+                  <h4 className="text-xl font-semibold text-white">Detailed Analysis</h4>
                 </div>
-              </div>
-              
-              <div className="prose prose-invert max-w-none">
-                <div className="text-gray-300 leading-relaxed whitespace-pre-line">
-                  {results.analysis_text}
+                <p className="text-gray-300 leading-relaxed">
+                  {results.detailed_analysis}
+                </p>
+              </GlassCard>
+            </motion.div>
+          )}
+
+          {/* Concerns and Recommendations */}
+          {results.concerns_and_recommendations && Object.keys(results.concerns_and_recommendations).length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.8 }}
+            >
+              <GlassCard className="p-6">
+                <div className="flex items-center space-x-2 mb-4">
+                  <span className="text-2xl">💡</span>
+                  <h4 className="text-xl font-semibold text-white">Concerns & Recommendations</h4>
                 </div>
-              </div>
-            </GlassCard>
-          </motion.div>
-        )}
+                
+                <div className="space-y-4">
+                  {/* High Priority */}
+                  {results.concerns_and_recommendations.highPriority && results.concerns_and_recommendations.highPriority.length > 0 && (
+                    <div>
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="text-red-400 font-semibold">🔴 High Priority</span>
+                      </div>
+                      <ul className="list-disc list-inside space-y-1 text-gray-300 ml-4">
+                        {results.concerns_and_recommendations.highPriority.map((item: string, index: number) => (
+                          <li key={index}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Medium Priority */}
+                  {results.concerns_and_recommendations.mediumPriority && results.concerns_and_recommendations.mediumPriority.length > 0 && (
+                    <div>
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="text-yellow-400 font-semibold">🟡 Medium Priority</span>
+                      </div>
+                      <ul className="list-disc list-inside space-y-1 text-gray-300 ml-4">
+                        {results.concerns_and_recommendations.mediumPriority.map((item: string, index: number) => (
+                          <li key={index}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Consider Testing */}
+                  {results.concerns_and_recommendations.considerTesting && results.concerns_and_recommendations.considerTesting.length > 0 && (
+                    <div>
+                      <div className="flex items-center space-x-2 mb-2">
+                        <span className="text-accent-blue font-semibold">🔵 Consider Testing</span>
+                      </div>
+                      <ul className="list-disc list-inside space-y-1 text-gray-300 ml-4">
+                        {results.concerns_and_recommendations.considerTesting.map((item: string, index: number) => (
+                          <li key={index}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </GlassCard>
+            </motion.div>
+          )}
+        </motion.div>
 
         {/* Actions */}
         <motion.div
