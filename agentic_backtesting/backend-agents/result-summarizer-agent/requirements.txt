@@ -1,0 +1,10 @@
+# Core Dependencies
+strands-agents>=0.1.0          # Agent framework
+boto3>=1.26.0                  # AWS SDK for Bedrock
+botocore>=1.29.0               # AWS core library
+python-dotenv>=1.0.0           # Environment variable management
+bedrock_agentcore
+bedrock-agentcore-starter-toolkit
+
+pandas>=1.5.0                  # Data processing
+numpy>=1.24.0                  # Numerical computing
