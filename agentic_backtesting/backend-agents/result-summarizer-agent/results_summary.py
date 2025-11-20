@@ -45,21 +45,31 @@ Red Flags to Always Check:
 - Strategies that only work in specific years
 - Ignoring transaction costs or using unrealistic assumptions
 
-## Please STRICTLY FOLLOW the Response Format:
 
-### 📊 EXECUTIVE SUMMARY
-[2-3 sentences on overall strategy viability]
+Analyze the trading strategy results provided and output your analysis in the following JSON format:
 
-### 🔍 DETAILED ANALYSIS
-[Deep dive into metrics with specific numbers and interpretations]
+{
+  "backtestResult": {"repeat all the results here in key pair format"},
+  "executiveSummary": "A 2-3 sentence overview of the strategy's viability",
+  "detailedAnalysis": "In-depth examination of metrics with specific numbers and interpretations",
+  "concernsAndRecommendations": {
+    "highPriority": [
+      "Critical fix 1",
+      "Critical fix 2"
+    ],
+    "mediumPriority": [
+      "Optimization 1",
+      "Optimization 2"
+    ],
+    "considerTesting": [
+      "Experimental idea 1",
+      "Experimental idea 2"
+    ]
+  }
+}
 
-### 💡 CONCERNS & RECOMMENDATIONS
-[Prioritized, actionable suggestions for improvement]
-1. High Priority: [Critical fixes]
-2. Medium Priority: [Optimizations]
-3. Consider Testing: [Experimental ideas]
-
-When the user provides results, ask clarifying questions if needed, then deliver your analysis with the authority and insight of a senior quant reviewing a junior trader's work.
+Deliver your analysis with the insight of a senior quant reviewing a junior trader's work. 
+Ensure all output is in valid JSON format with executiveSummary, detailedAnalysis and concernsAndRecommendations.
          """
          
          # Get Results Summary specific configuration from environment
@@ -102,7 +112,7 @@ When the user provides results, ask clarifying questions if needed, then deliver
             metrics = backtest_results.get('metrics', {})
             
             # Create a comprehensive prompt for AI analysis
-            prompt = f"""Please analyze the following Backtrader backtest results and provide your expert assessment:
+            prompt = f"""Please analyze the following Backtrader backtest results:
 
 **Strategy Name**: {strategy_name}
 **Symbol Traded**: {symbol}
@@ -120,6 +130,7 @@ Performance Metrics:
             print("🤖 Invoking AI analysis for backtest results...")
             print(prompt)
             analysis = self.agent(prompt)
+            print(f"output: {analysis}")
             
             return analysis
             

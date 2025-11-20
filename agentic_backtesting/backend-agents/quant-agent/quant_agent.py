@@ -541,12 +541,26 @@ def generate_trading_strategy(query: str) -> str:
         print(f"⏱️ Strategy generation completed in {processing_time:.2f} seconds")
         
         # Parse the AgentCore runtime response
-        if 'body' in result:
-            # Decode the response body
-            response_body = result['body'].read().decode('utf-8')
+        # The response is in result['response'] as a StreamingBody object
+        if 'response' in result:
+            # Read the StreamingBody content
+            response_body = result['response'].read().decode('utf-8')
             response_data = json.loads(response_body)
             
             # Extract the actual result from the nested structure
+            if 'result' in response_data and 'content' in response_data['result']:
+                content = response_data['result']['content']
+                if isinstance(content, list) and len(content) > 0:
+                    strategy_code = content[0].get('text', '')
+                else:
+                    strategy_code = str(content)
+            else:
+                strategy_code = response_body
+        elif 'body' in result:
+            # Fallback to 'body' if 'response' is not present
+            response_body = result['body'].read().decode('utf-8')
+            response_data = json.loads(response_body)
+            
             if 'result' in response_data and 'content' in response_data['result']:
                 content = response_data['result']['content']
                 if isinstance(content, list) and len(content) > 0:
@@ -747,7 +761,7 @@ def create_results_summary(backtest_results: dict)  -> str:
     print(f"💾 AgentCore Memory: Processing stored results...")
     
     if 'error' in backtest_results:
-        return f'Results in backtesting: {backtest_results['error']}'
+        return f"Results in backtesting: {backtest_results['error']}"
 
     try:
         reasoning = "Analyzing backtest performance and generating summary..."
@@ -763,12 +777,18 @@ def create_results_summary(backtest_results: dict)  -> str:
         )
         
         # Parse the AgentCore runtime response
-        if 'body' in result:
-            # Decode the response body
+        # The response is in result['response'] as a StreamingBody object
+        if 'response' in result:
+            # Read the StreamingBody content
+            response_body = result['response'].read().decode('utf-8')
+            response_data = json.loads(response_body)
+            summary_text = response_data
+            
+        elif 'body' in result:
+            # Fallback to 'body' if 'response' is not present
             response_body = result['body'].read().decode('utf-8')
             response_data = json.loads(response_body)
             
-            # Extract the actual result from the nested structure
             if 'result' in response_data and 'content' in response_data['result']:
                 content = response_data['result']['content']
                 if isinstance(content, list) and len(content) > 0:
@@ -782,6 +802,7 @@ def create_results_summary(backtest_results: dict)  -> str:
 
         processing_time = time.time() - start_time
         print(f"⏱️ Results summary completed in {processing_time:.2f} seconds")
+        print(f"got JSON result: {summary_text}")
         
         # Brief pause to ensure completion
         time.sleep(0.5)
@@ -813,18 +834,16 @@ STEP 3: ALWAYS call run_backtest
 STEP 4: ALWAYS call create_results_summary
 - Use the backtest results from Step 3
 - Call create_results_summary to format the final results
+- Output the JSON from create_results_summary direct to users 
 
 CRITICAL RULES:
 - Execute ALL 4 steps in sequence for EVERY request
 - WAIT for each tool to complete before calling the next tool
 - Do NOT call multiple tools simultaneously
-- Do NOT ask for clarification - proceed with defaults if information is missing
+- Do NOT ask for clarification - proceed with defaults AMZN 1-year if information is missing
 - Do NOT explain what you're going to do - just DO all 4 steps
-- Always use these default values if not provided:
-  * Symbol: AMZN
-  * Initial Investment: $10,000
-  * Strategy: EMA50 > EMA200 crossover
-- Complete the entire workflow automatically and synchronously""",
+- Complete the entire workflow automatically and synchronously
+- Output the JSON output directly from create_results_summary to users """,
     tools=[
         fetch_market_data_via_gateway,
         generate_trading_strategy, 
