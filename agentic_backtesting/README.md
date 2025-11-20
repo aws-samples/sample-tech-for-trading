@@ -13,11 +13,11 @@ This system uses 4 specialized agents orchestrated through Strands to transform 
 
 ### Technology Stack
 
-This project leverages **AWS Strands Agent SDK** and **AWS AgentCore** to build a multi-agent backtesting system:
+This project leverages **Strands Agent SDK** and **Amazon Bedrock AgentCore** to build a multi-agent backtesting system:
 
 - **Strands Agent SDK**: A Python framework for building agentic applications with tool-calling capabilities. Strands provides decorators like `@tool` to easily expose Python functions as agent tools, enabling seamless integration between agents and external services.
 
-- **Amazon Bedrock AgentCore Runtime**: A managed service for deploying and orchestrating AI agents at scale. AgentCore handles agent runtime management, memory persistence, and secure communication between agents through its Gateway service with Cognito authentication.
+- **AgentCore Runtime**: A managed service for deploying and orchestrating AI agents at scale. AgentCore handles agent runtime management, memory persistence, and secure communication between agents through its Gateway service with Cognito authentication.
 
 - **AgentCore Gateway with MCP**: The Market Data Gateway implements the Model Context Protocol (MCP) to provide standardized access to external data sources. It uses Cognito for authentication and connects to Lambda functions that query S3 Tables for historical market data.
 
