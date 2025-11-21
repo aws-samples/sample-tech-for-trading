@@ -8,9 +8,10 @@ This project provides resources, code samples, and architecture patterns for bui
 
 ## Key Features
 
-* **Factor Mining**: Implementation of fast factor mining using cloud GenAI and serverless services.
-* **Factor Trading**: Backtesting factor-based trading strategies with AWS Batch and Airflow
-* **Investment Advisor**: Building a personalized investment advisor using Agentic AI's core patterns
+* **[Factor Mining](./factor-mining)**: Implementation of fast factor mining using cloud GenAI and serverless services.
+* **[Factor Trading](./factor-trading)**: Backtesting factor-based trading strategies with AWS Batch and Airflow
+* **[Agentic Backtesting](./agentic_backtesting)**: Multi-agent system for automated trading strategy development and backtesting using AWS Strands Agent SDK and AgentCore
+* **[AI Fund Manager](./agentic_ai_fund_manager)**: Building a personalized investment advisor and portfolio architect using Agentic AI's core patterns
 
 ## Getting Started
 
@@ -27,6 +28,7 @@ Details about the cloud services used and the overall system architecture will b
 * Melody Lin
 * Charlie Chiu
 * Kwangwoo Lee
+* Dexter Chan
 
 We especially invite AWS experts to submit artifacts that demonstrate quantitative trading solutions on AWS. Please contact awsjacky@amazon.com for more information.
 
