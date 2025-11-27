@@ -125,7 +125,7 @@ Before deploying the Quant Agent, you need to deploy the Market Data MCP tool th
 
 1. **Navigate to the market data tool directory:**
    ```bash
-   cd agentcore-enablement/tools/market_data_mcp/deployment
+   cd backend-agents/quant-agent/tools/market_data_mcp/deployment
    ```
 
 2. **Create environment file:**
@@ -171,7 +171,7 @@ Before deploying the Quant Agent, you need to deploy the Market Data MCP tool th
    ```
 
 For detailed deployment instructions, refer to:
-- `agentcore-enablement/tools/market_data_mcp/deployment/README.md`
+- `backend-agents/quant-agent/tools/market_data_mcp/deployment/README.md`
 
 #### 1.3.2 Create Cognito User
 
