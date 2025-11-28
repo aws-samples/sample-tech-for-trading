@@ -28,7 +28,7 @@ update_env_var() {
     rm -f "${ENV_FILE}.bak"
 }
 
-echo "🚀 Setting up S3 Tables and migrating ClickHouse data..."
+echo "🚀 Setting up S3 Tables and populating with CSV data..."
 echo "🌍 Region: $AWS_REGION"
 
 # Generate unique bucket name if not set
@@ -43,15 +43,15 @@ echo "📦 S3 Tables Bucket: $S3_TABLES_BUCKET"
 echo "📊 Namespace: $S3_TABLES_NAMESPACE"
 echo "📋 Table: $S3_TABLES_TABLE"
 
-# Check if Python migration script exists
-MIGRATION_SCRIPT="$PROJECT_DIR/data/migrate_clickhouse_to_s3tables.py"
-if [ ! -f "$MIGRATION_SCRIPT" ]; then
-    echo "❌ Migration script not found: $MIGRATION_SCRIPT"
+# Check if Python population script exists
+POPULATION_SCRIPT="$PROJECT_DIR/data/populate_s3_table.py"
+if [ ! -f "$POPULATION_SCRIPT" ]; then
+    echo "❌ Population script not found: $POPULATION_SCRIPT"
     exit 1
 fi
 
-# Install migration dependencies
-echo "📦 Installing migration dependencies..."
+# Install population dependencies
+echo "📦 Installing population dependencies..."
 cd "$PROJECT_DIR"
 
 # Check if virtual environment should be used
@@ -63,16 +63,12 @@ else
     exit 1
 fi
 
-# Run the migration script
-echo "🔄 Running ClickHouse to S3 Tables migration..."
+# Run the population script
+echo "🔄 Populating S3 Tables from CSV data..."
 cd "$PROJECT_DIR/data"
-python3 migrate_clickhouse_to_s3tables.py \
-    --bucket-name "$S3_TABLES_BUCKET" \
-    --namespace "$S3_TABLES_NAMESPACE" \
-    --table-name "$S3_TABLES_TABLE" \
-    --region "$AWS_REGION"
+python3 populate_s3_table.py
 
-echo "✅ S3 Tables setup and data migration completed!"
+echo "✅ S3 Tables setup and data population completed!"
 echo "📦 Bucket: $S3_TABLES_BUCKET"
 echo "📊 Namespace: $S3_TABLES_NAMESPACE"
 echo "📋 Table: $S3_TABLES_TABLE"

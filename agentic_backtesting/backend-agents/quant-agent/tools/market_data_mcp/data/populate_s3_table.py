@@ -1,29 +1,22 @@
 #!/usr/bin/env python3
 """
-Complete ClickHouse to S3 Tables Migration
-Creates S3 Tables infrastructure and migrates data in one script
+Populate S3 Tables with Market Data from CSV
+Creates S3 Tables infrastructure and loads data from CSV file
 """
 
 import os
 import sys
 import boto3
 import pandas as pd
-import requests
-import json
 from pyiceberg.catalog import load_catalog
 import pyarrow as pa
 from datetime import datetime
 
-# ClickHouse Configuration
-CLICKHOUSE_CONFIG = {
-    'host': '44.222.122.134',
-    'port': '8123',
-    'user': 'default',
-    'password': 'clickhouse@aws',
-    'database': 'factor_model_tick_data_database'
-}
+# CSV file path
+CSV_FILE_PATH = os.path.join(os.path.dirname(__file__), 'amzn.daily.csv')
 
 def setup_aws_session():
+    """Setup AWS session"""
     try:
         session = boto3.Session()
         return session
@@ -38,8 +31,8 @@ def create_s3_tables_infrastructure(session: boto3.Session) -> tuple:
         
         # Configuration
         bucket_name = f"market-data-{int(datetime.now().timestamp())}"
-        namespace = "tick_data"
-        table_name = "tick_data"
+        namespace = "daily_data"
+        table_name = "daily_data"
         
         print("🚀 Creating S3 Tables Infrastructure")
         print("=" * 40)
@@ -70,33 +63,24 @@ def create_s3_tables_infrastructure(session: boto3.Session) -> tuple:
         print(f"❌ Failed to create S3 Tables infrastructure: {e}")
         return None, None, None
 
-def query_clickhouse(query: str) -> pd.DataFrame:
-    """Execute query against ClickHouse and return DataFrame"""
-    url = f"http://{CLICKHOUSE_CONFIG['host']}:{CLICKHOUSE_CONFIG['port']}"
-    formatted_query = f"{query} FORMAT JSONEachRow"
-    
-    params = {
-        'user': CLICKHOUSE_CONFIG['user'],
-        'password': CLICKHOUSE_CONFIG['password'],
-        'database': CLICKHOUSE_CONFIG['database'],
-        'query': formatted_query
-    }
-    
+def read_csv_data(csv_path: str) -> pd.DataFrame:
+    """Read market data from CSV file"""
     try:
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        
-        lines = response.text.strip().split('\n')
-        if not lines or lines == ['']:
+        if not os.path.exists(csv_path):
+            print(f"❌ CSV file not found: {csv_path}")
             return pd.DataFrame()
         
-        data = [json.loads(line) for line in lines if line.strip()]
-        df = pd.DataFrame(data)
-        print(f"✅ Retrieved {len(df)} rows from ClickHouse")
+        print(f"📂 Reading CSV file: {csv_path}")
+        df = pd.read_csv(csv_path)
+        
+        # Display column info
+        print(f"✅ Loaded {len(df)} rows from CSV")
+        print(f"📋 Columns: {list(df.columns)}")
+        
         return df
         
     except Exception as e:
-        print(f"❌ ClickHouse query failed: {e}")
+        print(f"❌ Failed to read CSV file: {e}")
         return pd.DataFrame()
 
 def setup_s3_tables_catalog(session: boto3.Session, bucket_name: str) -> object:
@@ -130,8 +114,10 @@ def migrate_data_to_s3_tables(df: pd.DataFrame, catalog: object, namespace: str,
         return False
     
     try:
-        # Map ClickHouse columns to S3 Tables schema
+        # Map CSV columns to S3 Tables schema
         df_mapped = pd.DataFrame()
+        
+        # Expected CSV columns: symbol, timestamp, open, high, low, close, volume, adjusted_close
         column_mappings = {
             'date': 'timestamp',
             'symbol': 'symbol',
@@ -143,21 +129,24 @@ def migrate_data_to_s3_tables(df: pd.DataFrame, catalog: object, namespace: str,
             'adj_close': 'adjusted_close'
         }
         
-        for table_col, df_col in column_mappings.items():
-            if df_col in df.columns:
+        for table_col, csv_col in column_mappings.items():
+            if csv_col in df.columns:
                 if table_col == 'date':
-                    df_mapped[table_col] = pd.to_datetime(df[df_col]).dt.date
+                    # Convert timestamp to date
+                    df_mapped[table_col] = pd.to_datetime(df[csv_col]).dt.date
                 elif table_col == 'symbol':
-                    df_mapped[table_col] = df[df_col].astype(str)
+                    df_mapped[table_col] = df[csv_col].astype(str)
                 elif table_col == 'volume':
-                    df_mapped[table_col] = pd.to_numeric(df[df_col], errors='coerce').astype('Int64')
-                elif 'price' in table_col or table_col == 'adj_close':
-                    df_mapped[table_col] = pd.to_numeric(df[df_col], errors='coerce').astype('float64')
+                    df_mapped[table_col] = pd.to_numeric(df[csv_col], errors='coerce').astype('Int64')
                 else:
-                    df_mapped[table_col] = df[df_col]
+                    # All price columns
+                    df_mapped[table_col] = pd.to_numeric(df[csv_col], errors='coerce').astype('float64')
         
         # Remove rows with null required fields
         df_mapped = df_mapped.dropna(subset=['date', 'symbol'])
+        
+        print(f"📊 Prepared {len(df_mapped)} rows for migration")
+        print(f"📋 Mapped columns: {list(df_mapped.columns)}")
         
         # Create PyArrow schema
         arrow_schema = pa.schema([
@@ -174,57 +163,70 @@ def migrate_data_to_s3_tables(df: pd.DataFrame, catalog: object, namespace: str,
         arrow_table = pa.Table.from_pandas(df_mapped, schema=arrow_schema, preserve_index=False)
         
         # Create table with schema and insert data
+        print(f"📊 Creating table: {namespace}.{table_name}")
         table = catalog.create_table(f"{namespace}.{table_name}", schema=arrow_schema)
-        print(f"✅ Created table with schema: {namespace}.{table_name}")
+        print(f"✅ Created table with schema")
         
+        print(f"📤 Uploading data to S3 Tables...")
         table.append(arrow_table)
         print(f"✅ Successfully migrated {len(df_mapped)} rows to S3 Tables")
         return True
         
     except Exception as e:
         print(f"❌ Failed to migrate data to S3 Tables: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def main():
-    """Main function - creates infrastructure and migrates data"""
-    print("🚀 ClickHouse to S3 Tables Complete Migration")
+    """Main function - creates infrastructure and loads CSV data"""
+    print("🚀 CSV to S3 Tables Data Population")
     print("=" * 50)
     
+    # Step 1: Setup AWS session
     session = setup_aws_session()
     
-    # Step 1: Create S3 Tables infrastructure
+    # Step 2: Read CSV data
+    print(f"\n📂 Reading CSV data...")
+    df = read_csv_data(CSV_FILE_PATH)
+    
+    if df.empty:
+        print("⚠️  No data loaded from CSV")
+        sys.exit(1)
+    
+    # Display sample data
+    print(f"\n📊 Sample data (first 3 rows):")
+    print(df.head(3).to_string())
+    
+    # Step 3: Create S3 Tables infrastructure
+    print(f"\n🏗️  Creating S3 Tables infrastructure...")
     bucket_name, namespace, table_name = create_s3_tables_infrastructure(session)
     if not bucket_name:
         sys.exit(1)
     
-    # Step 2: Setup catalog
+    # Step 4: Setup catalog
     print(f"\n🔗 Setting up S3 Tables catalog...")
     catalog = setup_s3_tables_catalog(session, bucket_name)
     if not catalog:
         sys.exit(1)
     
-    # Step 3: Query ClickHouse
-    print(f"\n📈 Querying ClickHouse for tick data...")
-    query = "SELECT * FROM tick_data WHERE symbol = 'AMZN' LIMIT 100"
-    df = query_clickhouse(query)
-    
-    if df.empty:
-        print("⚠️  No data retrieved from ClickHouse")
-        sys.exit(1)
-    
-    # Step 4: Migrate data
+    # Step 5: Migrate data
     print(f"\n📊 Migrating data to S3 Tables...")
     success = migrate_data_to_s3_tables(df, catalog, namespace, table_name)
     
     if success:
-        print(f"\n🎉 Complete migration successful!")
-        print("=" * 30)
+        print(f"\n🎉 Data population successful!")
+        print("=" * 50)
         print(f"📦 S3 Tables Bucket: {bucket_name}")
         print(f"📂 Namespace: {namespace}")
         print(f"📊 Table: {table_name}")
         print(f"📈 Records migrated: {len(df)}")
+        print(f"\n💡 Update your Lambda function environment variables:")
+        print(f"   S3_TABLES_BUCKET={bucket_name}")
+        print(f"   S3_TABLES_NAMESPACE={namespace}")
+        print(f"   S3_TABLES_TABLE={table_name}")
     else:
-        print(f"\n❌ Migration failed")
+        print(f"\n❌ Data population failed")
         sys.exit(1)
 
 if __name__ == "__main__":
