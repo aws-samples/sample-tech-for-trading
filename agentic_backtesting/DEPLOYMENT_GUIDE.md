@@ -140,6 +140,9 @@ Before deploying the Quant Agent, you need to deploy the Market Data MCP tool th
    GATEWAY_NAME="market-data-mcp-gateway"
    TARGET_NAME="market-data-lambda-target"
    REGION="us-east-1"
+
+   S3_TABLES_BUCKET="market-data-unique-name"
+   S3_TABLES_REGION="us-east-1"
    ...
    ```
 
