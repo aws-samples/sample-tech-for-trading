@@ -20,6 +20,7 @@ Before starting the deployment, ensure you have:
 
 - **AWS CLI** configured with appropriate credentials
 - **AgentCore CLI** installed and configured
+- **Docker** installed and running (required for Lambda container deployments)
 - **Node.js** (v18 or later) for frontend deployment
 - **Python 3.9+** for backend agents
 - **jq** for JSON processing
@@ -357,6 +358,6 @@ For complete frontend deployment instructions, see: `frontend-nextjs/README.md`
 ## Support and Resources
 
 - **AgentCore Documentation:** https://docs.aws.amazon.com/bedrock/latest/userguide/agents.html
-
+- **Docker Installation:** https://docs.docker.com/get-docker/
 
 For issues or questions, refer to the individual README files in each component directory.
