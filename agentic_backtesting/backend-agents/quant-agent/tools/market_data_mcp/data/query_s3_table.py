@@ -10,7 +10,7 @@ def query_s3_table(bucket_name, namespace, table_name):
     """Query data from S3 Tables"""
     try:
         # Setup AWS session
-        session = boto3.Session(profile_name='factor', region_name='us-east-1')
+        session = boto3.Session(region_name='us-east-1')
         sts_client = session.client('sts')
         account_id = sts_client.get_caller_identity()['Account']
         region = session.region_name

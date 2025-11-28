@@ -24,9 +24,8 @@ CLICKHOUSE_CONFIG = {
 }
 
 def setup_aws_session():
-    """Setup AWS session with 'factor' profile"""
     try:
-        session = boto3.Session(profile_name='factor', region_name='us-east-1')
+        session = boto3.Session(region_name='us-east-1')
         return session
     except Exception as e:
         print(f"❌ Failed to setup AWS session: {e}")
