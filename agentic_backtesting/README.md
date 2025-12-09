@@ -4,6 +4,21 @@ A multi-agent system built with Strands for automated trading strategy developme
 
 ## Overview
 
+### User Interface
+
+The system provides an intuitive web interface for submitting trading ideas and viewing results:
+
+**Agent Input:**
+![Agent Input](./docs/agent_input.png)
+
+**Backtest Results:**
+![Agent Output - Results](./docs/agent_output1.png)
+
+**Strategy Review & Recommendations:**
+![Agent Output - Analysis](./docs/agent_output2.png)
+
+### System Components
+
 This system uses 4 specialized agents orchestrated through Strands to transform trading ideas into backtested strategies:
 
 1. **Strategy Generator Agent** - Converts natural language trading ideas into executable Backtrader strategies
