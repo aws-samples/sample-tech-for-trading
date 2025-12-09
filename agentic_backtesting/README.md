@@ -2,6 +2,10 @@
 
 A multi-agent system built with Strands for automated trading strategy development and backtesting using historical market data.
 
+## Disclaimer
+
+**This project is for educational and research purposes only.** The backtesting results, trading strategies, and any analysis provided by this system do not constitute financial advice, investment recommendations, or an offer to buy or sell any securities. Past performance does not guarantee future results. Trading and investing involve substantial risk of loss. Always consult with a qualified financial advisor before making any investment decisions.
+
 ## Overview
 
 ### User Interface
@@ -9,12 +13,15 @@ A multi-agent system built with Strands for automated trading strategy developme
 The system provides an intuitive web interface for submitting trading ideas and viewing results:
 
 **Agent Input:**
+
 ![Agent Input](./docs/agent_input.png)
 
 **Backtest Results:**
+
 ![Agent Output - Results](./docs/agent_output1.png)
 
 **Strategy Review & Recommendations:**
+
 ![Agent Output - Analysis](./docs/agent_output2.png)
 
 ### System Components
