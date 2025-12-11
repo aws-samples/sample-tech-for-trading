@@ -1,10 +1,6 @@
 # Sample Quantitative Trading on Cloud
 
-This repository demonstrates how to leverage cloud services and GenAI for financial quantitative trading applications, research, and deployment.
-
-## Overview
-
-This project provides resources, code samples, and architecture patterns for building sophisticated quantitative trading systems using cloud technology. It focuses on scalable, high-performance computing solutions for financial modeling, backtesting, and real-time trading.
+This repository demonstrates how to leverage cloud services and GenAI for financial quantitative trading applications, research, and deployment, focusing on scalable, high-performance computing solutions for financial modeling, backtesting, and analysis.
 
 ## Key Features
 
