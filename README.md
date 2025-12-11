@@ -1,6 +1,6 @@
 # Sample Quantitative Trading on Cloud
 
-This repository demonstrates how to leverage cloud services and infrastructure for financial quantitative trading applications, research, and deployment.
+This repository demonstrates how to leverage cloud services and GenAI for financial quantitative trading applications, research, and deployment.
 
 ## Overview
 
