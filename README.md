@@ -13,10 +13,6 @@ This repository demonstrates how to leverage cloud services and GenAI for financ
 
 Instructions for setting up the development environment and deploying the sample applications will be provided in each folder.
 
-## Architecture
-
-Details about the cloud services used and the overall system architecture will be documented here.
-
 ## Contributors
 
 * Jacky Wu
