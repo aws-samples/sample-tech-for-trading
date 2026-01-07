@@ -20,6 +20,7 @@ Instructions for setting up the development environment and deploying the sample
 * Melody Lin
 * Charlie Chiu
 * Kwangwoo Lee
+* Haowen Huang
 * Dexter Chan
 
 We especially invite AWS experts to submit artifacts that demonstrate quantitative trading solutions on AWS. Please contact awsjacky@amazon.com for more information.
