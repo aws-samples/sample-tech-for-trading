@@ -21,7 +21,7 @@ Before starting the deployment, ensure you have:
 - **AWS CLI** configured with appropriate credentials
 - **AgentCore CLI** installed and configured
 - **Docker** installed and running (required for Lambda container deployments)
-- **Node.js** (v18 or later) for frontend deployment
+- **Node.js** (v22 or later) for frontend deployment
 - **Python 3.9+** for backend agents
 - **jq** for JSON processing
 - **zip** utility for creating deployment packages
