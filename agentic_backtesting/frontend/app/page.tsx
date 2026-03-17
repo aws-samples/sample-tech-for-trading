@@ -38,7 +38,10 @@ export default function StrategyBuilder() {
     { value: '3M', label: '3 Months' },
     { value: '6M', label: '6 Months' },
     { value: '1Y', label: '1 Year' },
-    { value: '2Y', label: '2 Years' }
+    { value: '2Y', label: '2 Years' },
+    { value: '5Y', label: '5 Years' },
+    { value: '10Y', label: '10 Years' },
+    { value: '20Y', label: '20 Years' }
   ];
 
   const handleInputChange = (field: keyof typeof formData, value: string | number) => {
