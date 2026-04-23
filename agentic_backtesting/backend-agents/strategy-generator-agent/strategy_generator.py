@@ -63,7 +63,7 @@ Always return complete, runnable Python code with proper imports and class struc
             prompt = self._create_strategy_prompt(input_data)
             
         # print(f"FULL prompt: {prompt}")
-        return self.invoke_sagentync(prompt)
+        return self.agent(prompt)
     
     def _create_strategy_prompt(self, config: Dict[str, Any]) -> str:
         """Create detailed prompt for strategy generation """
