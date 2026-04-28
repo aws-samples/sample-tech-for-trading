@@ -7,6 +7,7 @@ import GlassCard from '@/components/ui/GlassCard';
 import AnimatedButton from '@/components/ui/AnimatedButton';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { AgentOutput, Trade, TradeSummary } from '@/types/strategy';
+import { FRONTEND_VERSION } from '@/lib/version';
 
 // Convert decimal ratios (e.g. 0.5, -0.12) to percentage strings (e.g. "50.00%", "-12.00%")
 // Already-formatted strings with "%" are returned as-is; "N/A" passes through unchanged.
@@ -78,6 +79,9 @@ function ResultsDisplayContent() {
           }
           if (result.data.trade_summary) {
             parsedResult.trade_summary = result.data.trade_summary;
+          }
+          if (result.data.versions) {
+            parsedResult.versions = result.data.versions;
           }
 
           // Override metrics with structured backtest_metrics if available
@@ -717,6 +721,27 @@ function ResultsDisplayContent() {
           >
             🚀 Try Another Strategy
           </AnimatedButton>
+        </motion.div>
+
+        {/* Version Information - subtle, at bottom */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5, delay: 1.0 }}
+          className="mt-8 text-center text-xs text-gray-500"
+        >
+          <div className="inline-block">
+            Frontend: {FRONTEND_VERSION}
+            {results.versions && (
+              <>
+                {' | '}
+                Backend Agents:
+                {' '}Quant: {results.versions.quant_agent}
+                {' | '}Strategy: {results.versions.strategy_generator}
+                {' | '}Summary: {results.versions.results_summary}
+              </>
+            )}
+          </div>
         </motion.div>
       </div>
     </div>

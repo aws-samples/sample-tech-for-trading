@@ -98,23 +98,37 @@ async function processBacktest(jobId: string, strategyInput: any) {
     console.log('========================================');
 
     // Parse the response
+    // invoke_agent_runtime may return a JSON string (double-encoded) or a JSON object
     let result;
     try {
       result = JSON.parse(fullResponse);
+      // Handle double-serialization: if result is a string, parse again
+      if (typeof result === 'string') {
+        result = JSON.parse(result);
+      }
     } catch (parseError) {
       throw new Error('Failed to parse AgentCore response');
     }
 
     // Extract the text content from the agent response
-    if (!result.result?.content?.[0]?.text) {
+    // quant_agent returns: {"result": "<LLM text>", "strategy_code": "...", "trades": [...], ...}
+    // BedrockAgentCoreApp may also wrap as: {"result": {"content": [{"text": "..."}]}}
+    let analysisText: string;
+    if (typeof result.result === 'string') {
+      // Direct string response from quant_agent invoke()
+      analysisText = result.result;
+    } else if (result.result?.content?.[0]?.text) {
+      // Wrapped format from BedrockAgentCoreApp
+      analysisText = result.result.content[0].text;
+    } else {
       throw new Error('Unexpected response format from AgentCore');
     }
 
-    const analysisText = result.result.content[0].text;
     const strategyCode = result.strategy_code || null;
     const trades = result.trades || [];
     const tradeSummary = result.trade_summary || {};
     const backtestMetrics = result.backtest_metrics || null;
+    const versions = result.versions || null;
 
     console.log('========================================');
     console.log('[AgentCore] EXTRACTED TEXT:');
@@ -138,7 +152,8 @@ async function processBacktest(jobId: string, strategyInput: any) {
         strategyCode,
         trades,
         trade_summary: tradeSummary,
-        backtest_metrics: backtestMetrics
+        backtest_metrics: backtestMetrics,
+        versions
       }
     };
 

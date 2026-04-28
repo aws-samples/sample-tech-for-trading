@@ -5,6 +5,7 @@ Strategy Generator Agent - Converts JSON strategy config to executable Backtrade
 import json
 import os
 from typing import Dict, Any, Union
+from datetime import datetime
 from strands import Agent
 from strands.models import BedrockModel
 from bedrock_agentcore import BedrockAgentCoreApp
@@ -12,6 +13,9 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Version tracking for troubleshooting
+VERSION = os.getenv('AGENT_VERSION', datetime.now().strftime('%Y%m%d_%H%M%S'))
 
 # Initialize the AgentCore app
 app = BedrockAgentCoreApp()
@@ -36,6 +40,7 @@ Always return complete, runnable Python code with proper imports and class struc
         model_id = os.getenv('STRATEGY_GENERATOR_MODEL_ID', 'us.anthropic.claude-opus-4-7')
 
         print(f"🔧 Strategy Generator Configuration:")
+        print(f"   Version: {VERSION}")
         print(f"   Model ID: {model_id}")
         print(f"   Region: {aws_region}")
 
@@ -162,7 +167,11 @@ def invoke(payload, context=None):
         }
     """
     _ensure_initialized()
-    return _agent.process(payload)
+    strategy_code = _agent.process(payload)
+    return {
+        "code": str(strategy_code),
+        "version": VERSION
+    }
 
 
 if __name__ == "__main__":

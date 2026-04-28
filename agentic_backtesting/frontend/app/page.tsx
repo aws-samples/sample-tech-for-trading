@@ -8,6 +8,7 @@ import GlassInput from '@/components/ui/GlassInput';
 import GlassSelect from '@/components/ui/GlassSelect';
 import AnimatedButton from '@/components/ui/AnimatedButton';
 import { AVAILABLE_STOCKS, ValidationResult } from '@/types/strategy';
+import { FRONTEND_VERSION } from '@/lib/version';
 
 export default function StrategyBuilder() {
   const router = useRouter();
@@ -291,6 +292,9 @@ export default function StrategyBuilder() {
             </GlassCard>
           </motion.div>
         </div>
+      </div>
+      <div className="mt-8 text-center text-xs text-gray-500">
+        Frontend: {FRONTEND_VERSION}
       </div>
     </div>
   );

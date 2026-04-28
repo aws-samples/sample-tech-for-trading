@@ -4,6 +4,7 @@ Results Summary Agent - Analyzes and summarizes backtest results
 
 import os
 from typing import Dict, Any
+from datetime import datetime
 from strands import Agent
 from strands.models import BedrockModel
 from bedrock_agentcore import BedrockAgentCoreApp
@@ -11,6 +12,9 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Version tracking for troubleshooting
+VERSION = os.getenv('AGENT_VERSION', datetime.now().strftime('%Y%m%d_%H%M%S'))
 
 # Initialize the AgentCore app
 app = BedrockAgentCoreApp()
@@ -78,6 +82,7 @@ Ensure all output is in valid JSON format with executiveSummary, detailedAnalysi
          temperature = float(os.getenv('RESULTS_SUMMARY_TEMPERATURE', '0.3'))
          
          print(f"🔧 Results Summary Configuration:")
+         print(f"   Version: {VERSION}")
          print(f"   Model ID: {model_id}")
          print(f"   Region: {aws_region}")
          print(f"   Temperature: {temperature}")
@@ -160,7 +165,12 @@ def _ensure_initialized():
 def invoke(payload, context=None):
     """Main entrypoint for the backtesting agent"""
     _ensure_initialized()
-    return _agent.process(payload)
+    analysis_result = _agent.process(payload)
+
+    return {
+        "analysis": str(analysis_result),
+        "version": VERSION
+    }
 
 
 if __name__ == "__main__":

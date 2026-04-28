@@ -10,8 +10,13 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
+# Version tracking for troubleshooting
+from datetime import datetime
+VERSION = os.getenv('AGENT_VERSION', datetime.now().strftime('%Y%m%d_%H%M%S'))
+
 # Verify environment variables are loaded
 print("🔧 Environment Variables Loaded:")
+print(f"   Version: {VERSION}")
 print(f"   AGENTCORE_GATEWAY_URL: {os.getenv('AGENTCORE_GATEWAY_URL', 'Not set')}")
 print(f"   STRATEGY_GENERATOR_RUNTIME_ARN: {os.getenv('STRATEGY_GENERATOR_RUNTIME_ARN', 'Not set')}")
 print(f"   COGNITO_DOMAIN: {os.getenv('COGNITO_DOMAIN', 'Not set')}")
@@ -34,6 +39,8 @@ _quant_agent = None
 _region_name = None
 _generated_strategy_code = None
 _last_backtest_result = None  # Store last backtest result directly (trades, trade_summary)
+_strategy_generator_version = "unknown"  # Track strategy generator version
+_results_summary_version = "unknown"  # Track results summary version
 
 # Import heavy modules at top level (pre-installed in runtime, should be fast)
 import pandas as pd
@@ -42,7 +49,7 @@ import json
 import uuid
 import httpx
 import base64
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Dict, Any
 
 from tools.backtest import BacktestTool
@@ -547,27 +554,30 @@ def generate_trading_strategy(query: str) -> str:
         print(f"⏱️ Strategy generation completed in {processing_time:.2f} seconds")
         
         # Parse the AgentCore runtime response
-        # The response is in result['response'] as a StreamingBody object
+        # invoke_agent_runtime returns response as StreamingBody containing JSON
         if 'response' in result:
-            # Read the StreamingBody content
             response_body = result['response'].read().decode('utf-8')
-            response_data = json.loads(response_body)
-            
-            # Extract the actual result from the nested structure
-            if 'result' in response_data and 'content' in response_data['result']:
-                content = response_data['result']['content']
-                if isinstance(content, list) and len(content) > 0:
-                    strategy_code = content[0].get('text', '')
-                else:
-                    strategy_code = str(content)
-            else:
-                strategy_code = response_body
         elif 'body' in result:
-            # Fallback to 'body' if 'response' is not present
             response_body = result['body'].read().decode('utf-8')
-            response_data = json.loads(response_body)
-            
-            if 'result' in response_data and 'content' in response_data['result']:
+        else:
+            response_body = str(result)
+
+        response_data = json.loads(response_body)
+
+        # Extract version if present
+        global _strategy_generator_version
+
+        # invoke_agent_runtime returns the agent's output as a JSON-encoded string
+        # strategy_generator now returns {"code": "...", "version": "..."}
+        if isinstance(response_data, str):
+            strategy_code = response_data
+        elif isinstance(response_data, dict):
+            # Check if this is the new format with code and version
+            if 'code' in response_data:
+                strategy_code = response_data['code']
+                _strategy_generator_version = response_data.get('version', 'unknown')
+                print(f"📌 Strategy Generator Version: {_strategy_generator_version}")
+            elif 'result' in response_data and isinstance(response_data['result'], dict) and 'content' in response_data['result']:
                 content = response_data['result']['content']
                 if isinstance(content, list) and len(content) > 0:
                     strategy_code = content[0].get('text', '')
@@ -576,7 +586,7 @@ def generate_trading_strategy(query: str) -> str:
             else:
                 strategy_code = response_body
         else:
-            strategy_code = str(result)
+            strategy_code = str(response_data)
         
         # Ensure we have a valid result before proceeding
         if not strategy_code or len(str(strategy_code).strip()) < 50:
@@ -876,17 +886,26 @@ def create_results_summary(backtest_results: dict)  -> str:
         
         # Parse the AgentCore runtime response
         # The response is in result['response'] as a StreamingBody object
+        global _results_summary_version
+
         if 'response' in result:
             # Read the StreamingBody content
             response_body = result['response'].read().decode('utf-8')
             response_data = json.loads(response_body)
-            summary_text = response_data
-            
+
+            # results_summary returns {"analysis": "...", "version": "..."}
+            if isinstance(response_data, dict):
+                summary_text = response_data.get('analysis', str(response_data))
+                _results_summary_version = response_data.get('version', 'unknown')
+                print(f"📌 Results Summary Version: {_results_summary_version}")
+            else:
+                summary_text = response_data
+
         elif 'body' in result:
             # Fallback to 'body' if 'response' is not present
             response_body = result['body'].read().decode('utf-8')
             response_data = json.loads(response_body)
-            
+
             if 'result' in response_data and 'content' in response_data['result']:
                 content = response_data['result']['content']
                 if isinstance(content, list) and len(content) > 0:
@@ -1056,7 +1075,12 @@ def invoke(payload, context=None):
             "strategy_code": _generated_strategy_code,
             "trades": trades,
             "trade_summary": trade_summary,
-            "backtest_metrics": backtest_metrics
+            "backtest_metrics": backtest_metrics,
+            "versions": {
+                "quant_agent": VERSION,
+                "strategy_generator": _strategy_generator_version,
+                "results_summary": _results_summary_version
+            }
         }
 
     except Exception as e:

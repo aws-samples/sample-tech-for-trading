@@ -47,6 +47,11 @@ export interface AgentOutput {
   strategy_code?: string; // Generated Backtrader strategy Python code
   trades?: Trade[];
   trade_summary?: TradeSummary;
+  versions?: {
+    quant_agent: string;
+    strategy_generator: string;
+    results_summary: string;
+  };
 }
 
 // Individual trade record from Backtrader
