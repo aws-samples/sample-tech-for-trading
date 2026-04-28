@@ -547,21 +547,26 @@ def generate_trading_strategy(query: str) -> str:
         print(f"⏱️ Strategy generation completed in {processing_time:.2f} seconds")
         
         # Parse the AgentCore runtime response
-        # invoke_agent_runtime returns response as a StreamingBody containing a JSON-encoded string
+        # The response is in result['response'] as a StreamingBody object
         if 'response' in result:
+            # Read the StreamingBody content
             response_body = result['response'].read().decode('utf-8')
+            response_data = json.loads(response_body)
+            
+            # Extract the actual result from the nested structure
+            if 'result' in response_data and 'content' in response_data['result']:
+                content = response_data['result']['content']
+                if isinstance(content, list) and len(content) > 0:
+                    strategy_code = content[0].get('text', '')
+                else:
+                    strategy_code = str(content)
+            else:
+                strategy_code = response_body
         elif 'body' in result:
+            # Fallback to 'body' if 'response' is not present
             response_body = result['body'].read().decode('utf-8')
-        else:
-            response_body = str(result)
-
-        # Decode the JSON response
-        response_data = json.loads(response_body)
-
-        # invoke_agent_runtime returns the agent's output as a JSON string (not a dict)
-        if isinstance(response_data, str):
-            strategy_code = response_data
-        elif isinstance(response_data, dict):
+            response_data = json.loads(response_body)
+            
             if 'result' in response_data and 'content' in response_data['result']:
                 content = response_data['result']['content']
                 if isinstance(content, list) and len(content) > 0:
@@ -571,7 +576,7 @@ def generate_trading_strategy(query: str) -> str:
             else:
                 strategy_code = response_body
         else:
-            strategy_code = str(response_data)
+            strategy_code = str(result)
         
         # Ensure we have a valid result before proceeding
         if not strategy_code or len(str(strategy_code).strip()) < 50:
@@ -870,19 +875,18 @@ def create_results_summary(backtest_results: dict)  -> str:
         )
         
         # Parse the AgentCore runtime response
+        # The response is in result['response'] as a StreamingBody object
         if 'response' in result:
+            # Read the StreamingBody content
             response_body = result['response'].read().decode('utf-8')
-        elif 'body' in result:
-            response_body = result['body'].read().decode('utf-8')
-        else:
-            response_body = str(result)
-
-        response_data = json.loads(response_body)
-
-        # invoke_agent_runtime returns the agent's output as a JSON string (not a dict)
-        if isinstance(response_data, str):
+            response_data = json.loads(response_body)
             summary_text = response_data
-        elif isinstance(response_data, dict):
+            
+        elif 'body' in result:
+            # Fallback to 'body' if 'response' is not present
+            response_body = result['body'].read().decode('utf-8')
+            response_data = json.loads(response_body)
+            
             if 'result' in response_data and 'content' in response_data['result']:
                 content = response_data['result']['content']
                 if isinstance(content, list) and len(content) > 0:
@@ -892,7 +896,7 @@ def create_results_summary(backtest_results: dict)  -> str:
             else:
                 summary_text = response_body
         else:
-            summary_text = str(response_data)
+            summary_text = str(result)
 
         processing_time = time.time() - start_time
         print(f"⏱️ Results summary completed in {processing_time:.2f} seconds")
@@ -1036,11 +1040,23 @@ def invoke(payload, context=None):
                 trade_summary = latest.get('trade_summary', {})
                 print(f"📊 invoke() returning {len(trades)} trades from Memory")
 
+        # Build backtest_metrics from _last_backtest_result for frontend
+        backtest_metrics = None
+        if _last_backtest_result and "error" not in _last_backtest_result:
+            backtest_metrics = {
+                "initial_value": _last_backtest_result.get("initial_value"),
+                "final_value": _last_backtest_result.get("final_value"),
+                "total_return": _last_backtest_result.get("total_return"),
+                "metrics": _last_backtest_result.get("metrics", {}),
+            }
+            print(f"backtest_metrics: {backtest_metrics}")
+
         return {
             "result": result.message,
             "strategy_code": _generated_strategy_code,
             "trades": trades,
-            "trade_summary": trade_summary
+            "trade_summary": trade_summary,
+            "backtest_metrics": backtest_metrics
         }
 
     except Exception as e:
