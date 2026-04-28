@@ -26,7 +26,9 @@ if [ -f "results_summary.py" ]; then
     agentcore configure \
         --entrypoint results_summary.py \
         --name results_summary \
-        --requirements-file requirements.txt
+        --requirements-file requirements.txt \
+        --idle-timeout 900 \
+        --non-interactive
     
     
     # Build environment variables from .env file

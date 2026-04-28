@@ -74,7 +74,7 @@ Ensure all output is in valid JSON format with executiveSummary, detailedAnalysi
          
          # Get Results Summary specific configuration from environment
          aws_region = os.getenv('AWS_REGION', 'us-east-1')
-         model_id = os.getenv('RESULTS_SUMMARY_MODEL_ID', 'us.amazon.nova-pro-v1:0')
+         model_id = os.getenv('RESULTS_SUMMARY_MODEL_ID', 'us.amazon.nova-2-lite-v1:0')
          temperature = float(os.getenv('RESULTS_SUMMARY_TEMPERATURE', '0.3'))
          
          print(f"🔧 Results Summary Configuration:")
@@ -144,12 +144,23 @@ Performance Metrics:
         return self.analyze_results(input_data)
 
 
-agent = ResultsSummaryAgent()
+# Lazy initialization globals
+_initialized = False
+_agent = None
+
+def _ensure_initialized():
+    """Initialize the agent on first use to avoid cold start timeout"""
+    global _initialized, _agent
+    if _initialized:
+        return
+    _agent = ResultsSummaryAgent()
+    _initialized = True
 
 @app.entrypoint
 def invoke(payload, context=None):
-    """Main entrypoint for the backtesting agent"""  
-    return agent.process(payload)
+    """Main entrypoint for the backtesting agent"""
+    _ensure_initialized()
+    return _agent.process(payload)
 
 
 if __name__ == "__main__":

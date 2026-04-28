@@ -6,7 +6,23 @@ import { motion } from 'framer-motion';
 import GlassCard from '@/components/ui/GlassCard';
 import AnimatedButton from '@/components/ui/AnimatedButton';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
-import { AgentOutput } from '@/types/strategy';
+import { AgentOutput, Trade, TradeSummary } from '@/types/strategy';
+
+// Convert decimal ratios (e.g. 0.5, -0.12) to percentage strings (e.g. "50.00%", "-12.00%")
+// Already-formatted strings with "%" are returned as-is; "N/A" passes through unchanged.
+function formatAsPercent(value: string | number | undefined): string {
+  if (value === undefined || value === null) return 'N/A';
+  const str = String(value).trim();
+  if (str === 'N/A' || str === '') return 'N/A';
+  if (str.includes('%')) return str;
+  const num = parseFloat(str);
+  if (isNaN(num)) return str;
+  // Absolute value < 10 → treat as decimal ratio (0.5 → 50%, 1.5 → 150%)
+  if (Math.abs(num) < 10) {
+    return `${(num * 100).toFixed(2)}%`;
+  }
+  return `${num.toFixed(2)}%`;
+}
 
 function ResultsDisplayContent() {
   const router = useRouter();
@@ -18,7 +34,7 @@ function ResultsDisplayContent() {
   useEffect(() => {
     const jobId = searchParams.get('jobId');
     const strategyParam = searchParams.get('strategy');
-    
+
     if (!jobId || !strategyParam) {
       setError('Missing job information');
       setLoading(false);
@@ -40,43 +56,73 @@ function ResultsDisplayContent() {
 
   const pollForResults = async (jobId: string, strategy: any) => {
     const maxAttempts = 60; // 5 minutes max
-    const pollInterval = 5000; // 5 seconds
-    
+    const pollInterval = 15000; // 5 seconds
+
     for (let i = 0; i < maxAttempts; i++) {
       try {
         console.log(`[Results] 🔄 Polling attempt ${i + 1}/${maxAttempts} for job ${jobId}`);
-        
-        const response = await fetch(`/api/execute-backtest-async?jobId=${jobId}`);
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/api/execute-backtest-async?jobId=${jobId}`);
         const result = await response.json();
-        
+
         console.log('[Results] Poll result status:', result.status);
-        
+
         if (result.status === 'complete') {
           console.log('[Results] ✅ Backtest complete!');
           const parsedResult = parseAgentResponse(result.data.analysis, strategy);
+          if (result.data.strategyCode) {
+            parsedResult.strategy_code = result.data.strategyCode;
+          }
+          if (result.data.trades) {
+            parsedResult.trades = result.data.trades;
+          }
+          if (result.data.trade_summary) {
+            parsedResult.trade_summary = result.data.trade_summary;
+          }
+
+          // Override metrics with structured backtest_metrics if available
+          if (result.data.backtest_metrics) {
+            const m = result.data.backtest_metrics;
+            console.log('[Results] Using structured backtest metrics:', m);
+            if (m.initial_value) parsedResult.initial_investment = String(m.initial_value);
+            if (m.final_value) parsedResult.final_portfolio_value = String(Math.round(m.final_value * 100) / 100);
+            if (m.total_return != null) parsedResult.total_return = `${m.total_return.toFixed(2)}%`;
+            if (m.metrics) {
+              if (m.metrics['Sharpe Ratio'] != null && m.metrics['Sharpe Ratio'] !== 'N/A') {
+                parsedResult.sharpe_ratio = String(m.metrics['Sharpe Ratio']);
+              }
+              if (m.metrics['Max Drawdown']) {
+                parsedResult.maximum_drawdown = m.metrics['Max Drawdown'];
+              }
+            }
+            if (m.final_value && m.initial_value) {
+              parsedResult.profit_loss = String(Math.round((m.final_value - m.initial_value) * 100) / 100);
+            }
+          }
+
           setResults(parsedResult);
           setLoading(false);
           return;
         }
-        
+
         if (result.status === 'error') {
           console.log('[Results] ❌ Backtest failed:', result.error);
           setError(result.error || 'Backtest failed');
           setLoading(false);
           return;
         }
-        
+
         // Still processing, wait and continue
         if (i < maxAttempts - 1) {
           await new Promise(resolve => setTimeout(resolve, pollInterval));
         }
-        
+
       } catch (pollError) {
         console.error('[Results] Polling error:', pollError);
         // Continue polling on network errors
       }
     }
-    
+
     // Timeout
     console.log('[Results] ⏰ Polling timeout');
     setError('Backtest timed out after 5 minutes');
@@ -85,41 +131,72 @@ function ResultsDisplayContent() {
 
   const parseAgentResponse = (analysisText: string, strategy: any): AgentOutput => {
     try {
-      // Try to parse as JSON first
+      // Try multiple strategies to extract JSON from the LLM response
       let jsonData;
-      
-      // Check if the response contains JSON wrapped in markdown code blocks
+
+      // Strategy 1: Extract from ```json ... ``` markdown code block (greedy to get the largest block)
       const jsonMatch = analysisText.match(/```json\s*([\s\S]*?)\s*```/);
       if (jsonMatch) {
-        jsonData = JSON.parse(jsonMatch[1]);
-      } else {
-        // Try parsing the entire text as JSON
-        jsonData = JSON.parse(analysisText);
+        try {
+          jsonData = JSON.parse(jsonMatch[1].trim());
+        } catch {
+          // First code block might be malformed, try the next strategies
+        }
+      }
+
+      // Strategy 2: Try parsing the entire text as JSON
+      if (!jsonData) {
+        try {
+          jsonData = JSON.parse(analysisText.trim());
+        } catch {
+          // Not pure JSON, continue to next strategy
+        }
+      }
+
+      // Strategy 3: Find the largest JSON object containing "backtestResult"
+      if (!jsonData) {
+        const braceMatch = analysisText.match(/\{[\s\S]*"backtestResult"[\s\S]*\}/);
+        if (braceMatch) {
+          try {
+            jsonData = JSON.parse(braceMatch[0]);
+          } catch {
+            // Brace matching captured invalid JSON
+          }
+        }
+      }
+
+      if (!jsonData) {
+        throw new Error('Could not extract JSON from agent response');
       }
 
       // Extract data from the new JSON format
       const backtestResult = jsonData.backtestResult || {};
-      
+
       return {
         initial_investment: backtestResult.initialCapital || '100000',
         final_portfolio_value: backtestResult.finalPortfolioValue || 'N/A',
-        total_return: backtestResult.totalReturn || 'N/A',
-        maximum_drawdown: backtestResult.maxDrawdown || 'N/A',
+        total_return: formatAsPercent(backtestResult.totalReturn) || 'N/A',
+        maximum_drawdown: formatAsPercent(backtestResult.maxDrawdown) || 'N/A',
         symbol: backtestResult.symbolTraded || strategy.stock_symbol,
         strategy_type: backtestResult.strategyName || strategy.name,
         stop_loss: `${strategy.stop_loss}%`,
         take_profit: `${strategy.take_profit}%`,
         max_positions: strategy.max_positions,
+        buy_conditions: strategy.buy_conditions || '',
+        sell_conditions: strategy.sell_conditions || '',
+        backtest_window: strategy.backtest_window || '',
         profit_loss: backtestResult.profitLoss || 'N/A',
-        sharpe_ratio: backtestResult.SharpeRatio || 'N/A',
+        sharpe_ratio: backtestResult.sharpe_ratio || backtestResult.SharpeRatio || 'N/A',
         executive_summary: jsonData.executiveSummary || '',
         detailed_analysis: jsonData.detailedAnalysis || '',
         concerns_and_recommendations: jsonData.concernsAndRecommendations || {},
-        analysis_text: analysisText
+        analysis_text: analysisText,
+        trades: jsonData.trades || [],
+        trade_summary: jsonData.trade_summary || jsonData.tradeSummary || undefined
       };
     } catch (error) {
       console.error('[Results] Failed to parse JSON response, falling back to regex:', error);
-      
+
       // Fallback to regex parsing for backward compatibility
       const extractMetric = (patterns: RegExp[]): string => {
         for (const pattern of patterns) {
@@ -135,16 +212,16 @@ function ResultsDisplayContent() {
         /Initial Investment[:\s*]+\$?([\d,]+)/i,
         /Initial Capital[:\s*]+\$?([\d,]+)/i,
       ]) || '100000';
-      
+
       const finalValue = extractMetric([
         /Final Value[:\s*]+\$?([\d,]+\.?\d*)/i,
         /Final Portfolio Value[:\s*]+\$?([\d,]+\.?\d*)/i,
       ]);
-      
+
       const totalReturn = extractMetric([
         /Total Return[:\s*]+([+-]?[\d.]+%)/i,
       ]);
-      
+
       const maxDrawdown = extractMetric([
         /Maximum Drawdown[:\s*]+([\d.]+%)/i,
         /Max Drawdown[:\s*]+([\d.]+%)/i,
@@ -160,6 +237,9 @@ function ResultsDisplayContent() {
         stop_loss: `${strategy.stop_loss}%`,
         take_profit: `${strategy.take_profit}%`,
         max_positions: strategy.max_positions,
+        buy_conditions: strategy.buy_conditions || '',
+        sell_conditions: strategy.sell_conditions || '',
+        backtest_window: strategy.backtest_window || '',
         analysis_text: analysisText
       };
     }
@@ -169,16 +249,18 @@ function ResultsDisplayContent() {
     router.push('/');
   };
 
-  const parsePercentage = (value: string): number => {
-    return parseFloat(value.replace('%', '').replace('+', ''));
+  const parsePercentage = (value: string | number | undefined): number => {
+    if (typeof value === 'number') return value;
+    if (!value || typeof value !== 'string') return 0;
+    return parseFloat(value.replace('%', '').replace('+', '')) || 0;
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-dark-primary via-dark-secondary to-dark-tertiary flex items-center justify-center">
-        <LoadingSpinner 
-          size="lg" 
-          text="AgentCore is processing your backtest..." 
+        <LoadingSpinner
+          size="lg"
+          text="AgentCore is processing your backtest..."
           overlay={false}
         />
       </div>
@@ -210,7 +292,7 @@ function ResultsDisplayContent() {
     <div className="min-h-screen bg-gradient-to-br from-dark-primary via-dark-secondary to-dark-tertiary">
       <div className="container mx-auto px-6 py-12">
         {/* Header */}
-        <motion.div 
+        <motion.div
           className="mb-12"
           initial={{ opacity: 0, y: -50 }}
           animate={{ opacity: 1, y: 0 }}
@@ -236,7 +318,7 @@ function ResultsDisplayContent() {
               <span className="text-6xl">{performanceEmoji}</span>
               <div>
                 <h2 className="text-3xl font-bold text-white">Performance Overview</h2>
-                <motion.div 
+                <motion.div
                   className={`text-5xl font-bold ${performanceColor}`}
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -246,9 +328,9 @@ function ResultsDisplayContent() {
                 </motion.div>
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <motion.div 
+              <motion.div
                 className="text-center"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -259,8 +341,8 @@ function ResultsDisplayContent() {
                   ${results.initial_investment}
                 </div>
               </motion.div>
-              
-              <motion.div 
+
+              <motion.div
                 className="text-center"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -271,8 +353,8 @@ function ResultsDisplayContent() {
                   ${results.final_portfolio_value}
                 </div>
               </motion.div>
-              
-              <motion.div 
+
+              <motion.div
                 className="text-center"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -283,8 +365,8 @@ function ResultsDisplayContent() {
                   ${results.profit_loss || 'N/A'}
                 </div>
               </motion.div>
-              
-              <motion.div 
+
+              <motion.div
                 className="text-center"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -296,10 +378,10 @@ function ResultsDisplayContent() {
                 </div>
               </motion.div>
             </div>
-            
+
             {/* Additional Metrics Row */}
             <div className="grid grid-cols-2 gap-6 mt-6 pt-6 border-t border-white/10">
-              <motion.div 
+              <motion.div
                 className="text-center"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -310,8 +392,8 @@ function ResultsDisplayContent() {
                   {results.sharpe_ratio || 'N/A'}
                 </div>
               </motion.div>
-              
-              <motion.div 
+
+              <motion.div
                 className="text-center"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -356,7 +438,30 @@ function ResultsDisplayContent() {
                 <span className="text-gray-400">Max Positions:</span>
                 <p className="text-white text-lg font-medium mt-1">{results.max_positions}</p>
               </div>
+              {results.backtest_window && (
+                <div>
+                  <span className="text-gray-400">Backtest Window:</span>
+                  <p className="text-white text-lg font-medium mt-1">{results.backtest_window}</p>
+                </div>
+              )}
             </div>
+            {/* Buy/Sell Conditions */}
+            {(results.buy_conditions || results.sell_conditions) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 pt-6 border-t border-white/10">
+                {results.buy_conditions && (
+                  <div>
+                    <span className="text-gray-400">Buy Conditions:</span>
+                    <p className="text-accent-green text-sm font-medium mt-1">{results.buy_conditions}</p>
+                  </div>
+                )}
+                {results.sell_conditions && (
+                  <div>
+                    <span className="text-gray-400">Sell Conditions:</span>
+                    <p className="text-red-400 text-sm font-medium mt-1">{results.sell_conditions}</p>
+                  </div>
+                )}
+              </div>
+            )}
           </GlassCard>
         </motion.div>
 
@@ -429,7 +534,7 @@ function ResultsDisplayContent() {
                   <span className="text-2xl">💡</span>
                   <h4 className="text-xl font-semibold text-white">Concerns & Recommendations</h4>
                 </div>
-                
+
                 <div className="space-y-4">
                   {/* High Priority */}
                   {results.concerns_and_recommendations.highPriority && results.concerns_and_recommendations.highPriority.length > 0 && (
@@ -478,11 +583,129 @@ function ResultsDisplayContent() {
           )}
         </motion.div>
 
+        {/* Generated Strategy Code */}
+        {results.strategy_code && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.6 }}
+            className="mb-12"
+          >
+            <GlassCard className="p-8">
+              <details>
+                <summary className="text-2xl font-semibold text-white cursor-pointer flex items-center space-x-3">
+                  <span>📝</span>
+                  <span>Generated Strategy Code</span>
+                </summary>
+                <pre className="mt-6 p-4 bg-black/50 rounded-lg overflow-x-auto text-sm text-green-400 leading-relaxed whitespace-pre-wrap">
+                  <code>{results.strategy_code
+                    .replace(/^["']|["']$/g, '')
+                    .replace(/```python\\n|```\\n|```python\n|```\n|```/g, '')
+                    .replace(/\\n/g, '\n')
+                    .trim()
+                  }</code>
+                </pre>
+              </details>
+            </GlassCard>
+          </motion.div>
+        )}
+
+        {/* Transaction Log */}
+        {results.trades && results.trades.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.65 }}
+            className="mb-12"
+          >
+            <GlassCard className="p-8">
+              <h3 className="text-2xl font-semibold text-white mb-4">📊 Transaction Log</h3>
+
+              {/* Trade Summary */}
+              {results.trade_summary && (
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                  <div className="bg-white/5 rounded-lg p-3 text-center">
+                    <div className="text-gray-400 text-xs">Total Trades</div>
+                    <div className="text-xl font-bold text-white">{results.trade_summary.total_closed}</div>
+                  </div>
+                  <div className="bg-white/5 rounded-lg p-3 text-center">
+                    <div className="text-gray-400 text-xs">Won</div>
+                    <div className="text-xl font-bold text-accent-green">{results.trade_summary.won}</div>
+                  </div>
+                  <div className="bg-white/5 rounded-lg p-3 text-center">
+                    <div className="text-gray-400 text-xs">Lost</div>
+                    <div className="text-xl font-bold text-red-400">{results.trade_summary.lost}</div>
+                  </div>
+                  <div className="bg-white/5 rounded-lg p-3 text-center">
+                    <div className="text-gray-400 text-xs">Win Rate</div>
+                    <div className="text-xl font-bold text-accent-purple">{results.trade_summary.win_rate}%</div>
+                  </div>
+                  <div className="bg-white/5 rounded-lg p-3 text-center">
+                    <div className="text-gray-400 text-xs">Open</div>
+                    <div className="text-xl font-bold text-accent-blue">{results.trade_summary.total_open}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Trades Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-white/10">
+                      <th className="text-left text-gray-400 font-medium py-3 px-2">#</th>
+                      <th className="text-left text-gray-400 font-medium py-3 px-2">Direction</th>
+                      <th className="text-left text-gray-400 font-medium py-3 px-2">Entry Date</th>
+                      <th className="text-left text-gray-400 font-medium py-3 px-2">Exit Date</th>
+                      <th className="text-right text-gray-400 font-medium py-3 px-2">Entry $</th>
+                      <th className="text-right text-gray-400 font-medium py-3 px-2">Exit $</th>
+                      <th className="text-right text-gray-400 font-medium py-3 px-2">Shares</th>
+                      <th className="text-right text-gray-400 font-medium py-3 px-2">P&L</th>
+                      <th className="text-right text-gray-400 font-medium py-3 px-2">P&L %</th>
+                      <th className="text-right text-gray-400 font-medium py-3 px-2">Hold Days</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.trades.map((trade: Trade, index: number) => {
+                      const holdDays = Math.round(
+                        (new Date(trade.exit_date).getTime() - new Date(trade.entry_date).getTime()) / (1000 * 60 * 60 * 24)
+                      );
+                      return (
+                        <tr key={index} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                          <td className="py-3 px-2 text-gray-300">{index + 1}</td>
+                          <td className="py-3 px-2">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              trade.direction === 'LONG' ? 'bg-accent-green/20 text-accent-green' : 'bg-red-400/20 text-red-400'
+                            }`}>
+                              {trade.direction}
+                            </span>
+                          </td>
+                          <td className="py-3 px-2 text-gray-300">{trade.entry_date}</td>
+                          <td className="py-3 px-2 text-gray-300">{trade.exit_date}</td>
+                          <td className="py-3 px-2 text-right text-gray-300">${trade.entry_price.toFixed(2)}</td>
+                          <td className="py-3 px-2 text-right text-gray-300">${trade.exit_price.toFixed(2)}</td>
+                          <td className="py-3 px-2 text-right text-gray-300">{trade.shares}</td>
+                          <td className={`py-3 px-2 text-right font-medium ${trade.pnl >= 0 ? 'text-accent-green' : 'text-red-400'}`}>
+                            {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}
+                          </td>
+                          <td className={`py-3 px-2 text-right font-medium ${trade.pnl_pct >= 0 ? 'text-accent-green' : 'text-red-400'}`}>
+                            {trade.pnl_pct >= 0 ? '+' : ''}{trade.pnl_pct.toFixed(2)}%
+                          </td>
+                          <td className="py-3 px-2 text-right text-gray-300">{holdDays}d</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </GlassCard>
+          </motion.div>
+        )}
+
         {/* Actions */}
         <motion.div
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.6 }}
+          transition={{ duration: 0.8, delay: 0.7 }}
           className="flex justify-center"
         >
           <AnimatedButton

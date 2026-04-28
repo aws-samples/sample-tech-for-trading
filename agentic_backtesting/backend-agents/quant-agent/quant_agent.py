@@ -14,39 +14,41 @@ load_dotenv()
 print("🔧 Environment Variables Loaded:")
 print(f"   AGENTCORE_GATEWAY_URL: {os.getenv('AGENTCORE_GATEWAY_URL', 'Not set')}")
 print(f"   STRATEGY_GENERATOR_RUNTIME_ARN: {os.getenv('STRATEGY_GENERATOR_RUNTIME_ARN', 'Not set')}")
-print(f"   COGNITO_USER_POOL_ID: {os.getenv('COGNITO_USER_POOL_ID', 'Not set')}")
+print(f"   COGNITO_DOMAIN: {os.getenv('COGNITO_DOMAIN', 'Not set')}")
 print(f"   COGNITO_CLIENT_ID: {os.getenv('COGNITO_CLIENT_ID', 'Not set')}")
 print(f"   AWS_REGION: {os.getenv('AWS_REGION', 'us-east-1')}")
 
 from bedrock_agentcore import BedrockAgentCoreApp
-from bedrock_agentcore.memory import MemoryClient
-from bedrock_agentcore_starter_toolkit.operations.memory.manager import MemoryManager
-from bedrock_agentcore.memory.constants import ConversationalMessage, MessageRole
-from strands import Agent, tool
+from strands import tool
+
+# Initialize the AgentCore app (lightweight)
+app = BedrockAgentCoreApp()
+
+# Lazy initialization globals
+_initialized = False
+_agentcore_runtime_client = None
+_memory_client = None
+_memory_id = None
+_session_id = None
+_quant_agent = None
+_region_name = None
+_generated_strategy_code = None
+_last_backtest_result = None  # Store last backtest result directly (trades, trade_summary)
+
+# Import heavy modules at top level (pre-installed in runtime, should be fast)
 import pandas as pd
 import numpy as np
 import json
 import uuid
 import httpx
-import asyncio
-import boto3
 import base64
-import hmac
-import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, Any
 
 from tools.backtest import BacktestTool
 
-# Initialize the AgentCore app
-app = BedrockAgentCoreApp()
-
 # Global storage for market data
 _stored_market_data = {}
-
-_region_name = os.getenv('AWS_REGION', 'us-east-1')
-
-agentcore_runtime_client = boto3.client('bedrock-agentcore', region_name=_region_name)
 
 def extract_market_data_from_gateway_response(gateway_response: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -158,19 +160,20 @@ def extract_market_data_from_gateway_response(gateway_response: Dict[str, Any]) 
 def get_memory_id_by_name(name_prefix: str = "quant_agent") -> str:
     """
     Retrieve AgentCore Memory ID by searching for memory with name starting with prefix.
-    
+
     Args:
         name_prefix: The prefix to search for in memory names (default: "quant_agent")
-    
+
     Returns:
         Memory ID string, or creates a new memory if not found
     """
+    import boto3
     try:
         agentcore_client = boto3.client('bedrock-agentcore-control', region_name=_region_name)
-        
+
         # List all memories
         response = agentcore_client.list_memories()
-        
+
         # Search for memory with matching name prefix in the 'id' field
         for memory in response.get('memories', []):
             memory_id = memory.get('id', '')
@@ -178,36 +181,48 @@ def get_memory_id_by_name(name_prefix: str = "quant_agent") -> str:
             if memory_id.startswith(name_prefix):
                 print(f"✅ Found existing memory: {memory_id}")
                 return memory_id
-        
+
     except Exception as e:
         print(f"❌ Error getting memory ID: {e}")
         return "your_fallback_id"
 
-memory_client = MemoryClient(region_name=_region_name)
-_memory_id = get_memory_id_by_name("quant_agent")
 _actor_id = "Quant"
-_session_id = f"quant_session_{datetime.now().strftime('%Y%m%d')}"  # Changes daily, not per second
-print(f"🔑 Start Session ID: {_session_id}")
 
-def save_backtest_results_to_memory_sync(results: Dict[str, Any]):
-    """Save backtest results to AgentCore Memory using create_event (synchronous version)"""
+def save_backtest_results_to_memory_sync(results: Dict[str, Any], strategy_code: str = None):
+    """Save backtest results (with trades and strategy code) to AgentCore Memory"""
+    global _memory_client, _memory_id, _session_id
     try:
         symbol = results.get('symbol', 'UNKNOWN')
         print(f"💾 Saving backtest results for {symbol} to AgentCore Memory...")
-        
-        # Format results as ASSISTANT message
-        results_message = f"Backtest result: {json.dumps(results)}"
-        
+
+        # Build comprehensive record
+        memory_record = {
+            'timestamp': datetime.now().isoformat(),
+            'symbol': symbol,
+            'performance': {
+                'initial_value': results.get('initial_value'),
+                'final_value': results.get('final_value'),
+                'total_return': results.get('total_return'),
+                'metrics': results.get('metrics', {}),
+                'strategy_class': results.get('strategy_class')
+            },
+            'trade_summary': results.get('trade_summary', {}),
+            'trades': results.get('trades', []),
+            'strategy_code': strategy_code
+        }
+
+        results_message = f"Backtest result: {json.dumps(memory_record)}"
+
         # Create event using memory_client.create_event
-        event = memory_client.create_event(
+        event = _memory_client.create_event(
             memory_id=_memory_id,
             actor_id=_actor_id,
             session_id=_session_id,
             messages=[(results_message, "ASSISTANT")]
         )
-        
-        print(f"✅ Backtest results saved to AgentCore Memory")
-        
+
+        print(f"✅ Backtest results saved to AgentCore Memory (trades: {len(memory_record['trades'])}, strategy_code: {'yes' if strategy_code else 'no'})")
+
     except Exception as e:
         print(f"❌ Failed to save backtest results to AgentCore Memory: {e}")
         import traceback
@@ -215,11 +230,12 @@ def save_backtest_results_to_memory_sync(results: Dict[str, Any]):
 
 def get_backtest_results_from_memory(symbol: str = None) -> Dict[str, Any]:
     """Retrieve backtest results from AgentCore Memory using list_events"""
+    global _memory_client, _memory_id, _session_id
     try:
         # print(f"🔍 Retrieving backtest results from AgentCore Memory...")
-        
+
         # List events using memory_client
-        events = memory_client.list_events(
+        events = _memory_client.list_events(
             memory_id=_memory_id,
             actor_id=_actor_id,
             session_id=_session_id
@@ -272,54 +288,43 @@ def get_backtest_results_from_memory(symbol: str = None) -> Dict[str, Any]:
         return None
 
 
-def get_secret_hash(username: str, client_id: str, client_secret: str) -> str:
-    """Generate secret hash for Cognito authentication"""
-    message = username + client_id
-    dig = hmac.new(
-        client_secret.encode('utf-8'),
-        message.encode('utf-8'),
-        hashlib.sha256
-    ).digest()
-    return base64.b64encode(dig).decode()
-
 def authenticate_with_cognito() -> str:
-    """Authenticate with Cognito and return access token (synchronous)"""
+    """Authenticate with Cognito using client_credentials flow and return access token"""
+    global _region_name
+    import urllib.request
+    import urllib.parse
+
     try:
-        # Get Cognito configuration from environment
-        user_pool_id = os.getenv('COGNITO_USER_POOL_ID')
         client_id = os.getenv('COGNITO_CLIENT_ID')
         client_secret = os.getenv('COGNITO_CLIENT_SECRET')
-        username = os.getenv('COGNITO_USERNAME')
-        password = os.getenv('COGNITO_PASSWORD')
+        cognito_domain = os.getenv('COGNITO_DOMAIN')
         region = _region_name
-        
-        if not all([client_id, client_secret, username, password]):
-            raise ValueError("Missing Cognito configuration. Please set COGNITO_CLIENT_ID, COGNITO_CLIENT_SECRET, COGNITO_USERNAME, and COGNITO_PASSWORD in .env")
-        
-        # print(f"🔐 Authenticating with Cognito User Pool: {user_pool_id}")
-        
-        # Initialize Cognito client (boto3 is synchronous)
-        cognito_client = boto3.client('cognito-idp', region_name=region)
-        
-        # Generate secret hash
-        secret_hash = get_secret_hash(username, client_id, client_secret)
-        
-        # Authenticate with Cognito (synchronous call)
-        response = cognito_client.admin_initiate_auth(
-            UserPoolId=user_pool_id,
-            ClientId=client_id,
-            AuthFlow='ADMIN_NO_SRP_AUTH',
-            AuthParameters={
-                'USERNAME': username,
-                'PASSWORD': password,
-                'SECRET_HASH': secret_hash
-            }
-        )
-        
-        access_token = response['AuthenticationResult']['AccessToken']
-        # print("✅ Cognito authentication successful")
+
+        if not all([client_id, client_secret, cognito_domain]):
+            raise ValueError(
+                "Missing Cognito configuration. "
+                "Please set COGNITO_CLIENT_ID, COGNITO_CLIENT_SECRET, and COGNITO_DOMAIN in .env"
+            )
+
+        # Token endpoint
+        token_url = f"https://{cognito_domain}.auth.{region}.amazoncognito.com/oauth2/token"
+
+        # client_credentials flow: Basic auth with client_id:client_secret
+        credentials = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+        data = urllib.parse.urlencode({
+            'grant_type': 'client_credentials',
+        }).encode()
+
+        req = urllib.request.Request(token_url, data=data, method='POST')
+        req.add_header('Content-Type', 'application/x-www-form-urlencoded')
+        req.add_header('Authorization', f'Basic {credentials}')
+
+        with urllib.request.urlopen(req) as resp:
+            result = json.loads(resp.read().decode())
+
+        access_token = result['access_token']
         return access_token
-        
+
     except Exception as e:
         print(f"❌ Cognito authentication failed: {e}")
         raise
@@ -527,8 +532,9 @@ def generate_trading_strategy(query: str) -> str:
     start_time = time.time()
     
     try:
+        global _agentcore_runtime_client
         # Call strategy agent and wait for completion
-        result = agentcore_runtime_client.invoke_agent_runtime(
+        result = _agentcore_runtime_client.invoke_agent_runtime(
             agentRuntimeArn=os.getenv('STRATEGY_GENERATOR_RUNTIME_ARN'),
             runtimeSessionId=str(uuid.uuid4()),  # Unique session ID
             payload=json.dumps(input_data).encode('utf-8'),
@@ -541,26 +547,21 @@ def generate_trading_strategy(query: str) -> str:
         print(f"⏱️ Strategy generation completed in {processing_time:.2f} seconds")
         
         # Parse the AgentCore runtime response
-        # The response is in result['response'] as a StreamingBody object
+        # invoke_agent_runtime returns response as a StreamingBody containing a JSON-encoded string
         if 'response' in result:
-            # Read the StreamingBody content
             response_body = result['response'].read().decode('utf-8')
-            response_data = json.loads(response_body)
-            
-            # Extract the actual result from the nested structure
-            if 'result' in response_data and 'content' in response_data['result']:
-                content = response_data['result']['content']
-                if isinstance(content, list) and len(content) > 0:
-                    strategy_code = content[0].get('text', '')
-                else:
-                    strategy_code = str(content)
-            else:
-                strategy_code = response_body
         elif 'body' in result:
-            # Fallback to 'body' if 'response' is not present
             response_body = result['body'].read().decode('utf-8')
-            response_data = json.loads(response_body)
-            
+        else:
+            response_body = str(result)
+
+        # Decode the JSON response
+        response_data = json.loads(response_body)
+
+        # invoke_agent_runtime returns the agent's output as a JSON string (not a dict)
+        if isinstance(response_data, str):
+            strategy_code = response_data
+        elif isinstance(response_data, dict):
             if 'result' in response_data and 'content' in response_data['result']:
                 content = response_data['result']['content']
                 if isinstance(content, list) and len(content) > 0:
@@ -570,24 +571,29 @@ def generate_trading_strategy(query: str) -> str:
             else:
                 strategy_code = response_body
         else:
-            strategy_code = str(result)
+            strategy_code = str(response_data)
         
         # Ensure we have a valid result before proceeding
         if not strategy_code or len(str(strategy_code).strip()) < 50:
             print("⚠️ Strategy generation returned insufficient content")
             return "Error: Strategy generation failed - insufficient content returned"
             
-        print("✅ Strategy generation completed successfully")
+        print("✅ [STRATEGY SOURCE] Strategy code generated by Strategy Generator Runtime (tool call succeeded)")
         print("="*50)
-        
+
+        # Save strategy code for inclusion in final response
+        global _generated_strategy_code
+        _generated_strategy_code = strategy_code
+
         # Add a small delay to ensure completion
         time.sleep(1)
-        
+
         return strategy_code
         
     except Exception as e:
         processing_time = time.time() - start_time
         print(f"❌ Strategy generation failed after {processing_time:.2f} seconds: {e}")
+        print("⚠️ [STRATEGY SOURCE] Strategy Generator Runtime FAILED. The LLM agent will self-generate the strategy code.")
         print("="*50)
         raise
 
@@ -619,7 +625,16 @@ def run_backtest(symbol: str, strategy_code: str, params: dict = None) -> dict:
     if not strategy_code or len(strategy_code.strip()) < 100:
         print("❌ ERROR: Invalid or empty strategy code")
         return {'error': 'Invalid or empty strategy code'}
-    
+
+    # Save strategy_code as fallback (in case generate_trading_strategy failed/skipped)
+    global _generated_strategy_code
+    if not _generated_strategy_code:
+        _generated_strategy_code = strategy_code
+        print(f"⚠️ [STRATEGY SOURCE] Strategy code was SELF-GENERATED by the LLM agent (not from Strategy Generator Runtime)")
+        print(f"📝 Self-generated strategy code captured in run_backtest ({len(strategy_code)} chars)")
+    else:
+        print(f"✅ [STRATEGY SOURCE] Strategy code from Strategy Generator Runtime ({len(_generated_strategy_code)} chars)")
+
     global _stored_market_data
     
     # Check if market data is available
@@ -721,15 +736,92 @@ def run_backtest(symbol: str, strategy_code: str, params: dict = None) -> dict:
     processing_time = time.time() - start_time
     
     print(f"⏱️ Backtest completed in {processing_time:.2f} seconds")
-    print(f"📤 OUTPUT: {result}")
-    
-    # Save backtest results to AgentCore Memory
+
+    # Log trade details for debugging
     if 'error' not in result:
-        # print("💾 Saving backtest results to AgentCore Memory...")
-        save_backtest_results_to_memory_sync(result)
-    
+        trades = result.get('trades', [])
+        trade_summary = result.get('trade_summary', {})
+        print(f"📊 TRADES CAPTURED: {len(trades)} trades")
+        for i, t in enumerate(trades):
+            print(f"   Trade {i+1}: {t.get('direction')} {t.get('entry_date')} -> {t.get('exit_date')} | P&L: ${t.get('pnl', 0):.2f}")
+        print(f"📊 TRADE SUMMARY: {trade_summary}")
+
+        # Store result globally so invoke() can access it directly
+        global _last_backtest_result
+        _last_backtest_result = result
+        print(f"💾 Stored backtest result with {len(trades)} trades in _last_backtest_result")
+
+        # Also save to AgentCore Memory for historical queries
+        save_backtest_results_to_memory_sync(result, strategy_code=strategy_code)
+    else:
+        print(f"📤 OUTPUT (error): {result}")
+
     print("="*50)
     return result
+
+
+@tool
+def get_backtest_history(symbol: str = None, limit: int = 10) -> dict:
+    """
+    Retrieve historical backtest results from AgentCore Memory.
+    Returns trades, strategy code, and performance metrics for past backtests.
+
+    Args:
+        symbol: Optional stock symbol to filter by (e.g., AMZN, AAPL)
+        limit: Maximum number of records to return (default: 10)
+
+    Returns:
+        List of historical backtest records with trades and performance data
+    """
+    global _memory_client, _memory_id, _session_id
+    try:
+        print(f"📖 Retrieving backtest history from AgentCore Memory (symbol={symbol}, limit={limit})...")
+
+        events = _memory_client.list_events(
+            memory_id=_memory_id,
+            actor_id=_actor_id,
+            session_id=_session_id
+        )
+
+        # Handle both list and dict response formats
+        if isinstance(events, dict):
+            events_list = events.get('events', [])
+        elif isinstance(events, list):
+            events_list = events
+        else:
+            events_list = []
+
+        records = []
+        for event in reversed(events_list):  # Most recent first
+            try:
+                messages = event.get('messages', [])
+                for msg in messages:
+                    content = msg.get('content', '') if isinstance(msg, dict) else str(msg)
+                    if 'Backtest result:' in content:
+                        json_part = content.split('Backtest result:', 1)[1].strip()
+                        record = json.loads(json_part)
+
+                        # Filter by symbol if specified
+                        if symbol and record.get('symbol', '').upper() != symbol.upper():
+                            continue
+
+                        records.append(record)
+                        if len(records) >= limit:
+                            break
+            except Exception as e:
+                print(f"⚠️ Error parsing event: {e}")
+                continue
+            if len(records) >= limit:
+                break
+
+        print(f"✅ Found {len(records)} backtest records in AgentCore Memory")
+        return {'records': records, 'count': len(records)}
+
+    except Exception as e:
+        print(f"❌ Failed to retrieve backtest history: {e}")
+        import traceback
+        traceback.print_exc()
+        return {'records': [], 'count': 0, 'error': str(e)}
 
 
 @tool
@@ -764,12 +856,13 @@ def create_results_summary(backtest_results: dict)  -> str:
         return f"Results in backtesting: {backtest_results['error']}"
 
     try:
+        global _agentcore_runtime_client
         reasoning = "Analyzing backtest performance and generating summary..."
-        
+
         print(f"📥 INPUT: {backtest_results}")
         print(f"🧠 REASONING: {reasoning}")
-        
-        result = agentcore_runtime_client.invoke_agent_runtime(
+
+        result = _agentcore_runtime_client.invoke_agent_runtime(
             agentRuntimeArn=os.getenv('BACKTEST_SUMMARY_RUNTIME_ARN'),
             runtimeSessionId=str(uuid.uuid4()),  # Unique session ID
             payload=json.dumps(backtest_results).encode('utf-8'),
@@ -777,18 +870,19 @@ def create_results_summary(backtest_results: dict)  -> str:
         )
         
         # Parse the AgentCore runtime response
-        # The response is in result['response'] as a StreamingBody object
         if 'response' in result:
-            # Read the StreamingBody content
             response_body = result['response'].read().decode('utf-8')
-            response_data = json.loads(response_body)
-            summary_text = response_data
-            
         elif 'body' in result:
-            # Fallback to 'body' if 'response' is not present
             response_body = result['body'].read().decode('utf-8')
-            response_data = json.loads(response_body)
-            
+        else:
+            response_body = str(result)
+
+        response_data = json.loads(response_body)
+
+        # invoke_agent_runtime returns the agent's output as a JSON string (not a dict)
+        if isinstance(response_data, str):
+            summary_text = response_data
+        elif isinstance(response_data, dict):
             if 'result' in response_data and 'content' in response_data['result']:
                 content = response_data['result']['content']
                 if isinstance(content, list) and len(content) > 0:
@@ -798,7 +892,7 @@ def create_results_summary(backtest_results: dict)  -> str:
             else:
                 summary_text = response_body
         else:
-            summary_text = str(result)
+            summary_text = str(response_data)
 
         processing_time = time.time() - start_time
         print(f"⏱️ Results summary completed in {processing_time:.2f} seconds")
@@ -813,18 +907,65 @@ def create_results_summary(backtest_results: dict)  -> str:
         print(f"❌ Results summary failed after {processing_time:.2f} seconds: {e}")
         return f'Results processing failed: {str(e)}'
 
-# Create the agent with all Strands tools
-quant_agent = Agent(
-    system_prompt="""You are the Quant Backtesting Agent. When you receive ANY request, you MUST automatically execute ALL 4 steps in this EXACT sequence:
+def _ensure_initialized():
+    """
+    Lazy initialization of heavy resources.
+    Called on first invoke() to defer expensive operations.
+    """
+    global _initialized, _agentcore_runtime_client, _memory_client, _memory_id, _session_id, _quant_agent, _region_name
+
+    if _initialized:
+        return
+
+    print("🔧 Initializing heavy resources (lazy init)...")
+
+    # Import heavy modules needed for initialization
+    import boto3
+    from bedrock_agentcore.memory import MemoryClient
+    from strands import Agent, tool
+
+    # Set region
+    _region_name = os.getenv('AWS_REGION', 'us-east-1')
+
+    # Create boto3 clients
+    _agentcore_runtime_client = boto3.client('bedrock-agentcore', region_name=_region_name)
+
+    # Create memory client
+    _memory_client = MemoryClient(region_name=_region_name)
+
+    # Get memory ID (makes API call)
+    _memory_id = get_memory_id_by_name("quant_agent")
+
+    # Generate session ID
+    _session_id = f"quant_session_{datetime.now().strftime('%Y%m%d')}"
+    print(f"🔑 Session ID: {_session_id}")
+
+    # Create the Strands agent with BedrockModel
+    from strands.models.bedrock import BedrockModel
+    _quant_model_id = os.getenv('QUANT_AGENT_MODEL_ID', 'us.anthropic.claude-sonnet-4-6')
+    print(f"   Quant Agent Model ID: {_quant_model_id}")
+
+    _quant_model = BedrockModel(
+        model_id=_quant_model_id,
+        region_name=_region_name,
+    )
+
+    _quant_agent = Agent(
+        model=_quant_model,
+        system_prompt="""You are the Quant Backtesting Agent. When you receive ANY request, you MUST automatically execute ALL 4 steps in this EXACT sequence:
 
 STEP 1: ALWAYS call generate_trading_strategy first
 - Use the user's request to create a JSON strategy format
 - If no specific strategy is provided, create a default EMA crossover strategy for AMZN
 - Pass the JSON strategy to generate_trading_strategy tool
 
-STEP 2: ALWAYS call fetch_market_data_via_gateway 
+STEP 2: ALWAYS call fetch_market_data_via_gateway
 - Use the symbol from the strategy (default to AMZN if not specified)
-- Call fetch_market_data_via_gateway with the symbol
+- IMPORTANT: Parse the backtest_window field (e.g. "10Y", "5Y", "1Y", "6M", "3M", "1M") and convert it to start_date and end_date:
+  - end_date = today's date in YYYY-MM-DD format
+  - start_date = end_date minus the backtest_window duration (e.g. "10Y" means 10 years ago, "6M" means 6 months ago)
+  - Set limit to the approximate number of trading days: 1M=21, 3M=63, 6M=126, 1Y=252, 2Y=504, 5Y=1260, 10Y=2520, 20Y=5040
+- Call fetch_market_data_via_gateway with symbol, start_date, end_date, and limit
 
 STEP 3: ALWAYS call run_backtest
 - Use the strategy code from Step 1 and market data from Step 2
@@ -834,7 +975,7 @@ STEP 3: ALWAYS call run_backtest
 STEP 4: ALWAYS call create_results_summary
 - Use the backtest results from Step 3
 - Call create_results_summary to format the final results
-- Output the JSON from create_results_summary direct to users 
+- Output the JSON from create_results_summary direct to users
 
 CRITICAL RULES:
 - Execute ALL 4 steps in sequence for EVERY request
@@ -844,18 +985,31 @@ CRITICAL RULES:
 - Do NOT explain what you're going to do - just DO all 4 steps
 - Complete the entire workflow automatically and synchronously
 - Output the JSON output directly from create_results_summary to users """,
-    tools=[
-        fetch_market_data_via_gateway,
-        generate_trading_strategy, 
-        run_backtest,
-        create_results_summary
-    ]
-)
+        tools=[
+            fetch_market_data_via_gateway,
+            generate_trading_strategy,
+            run_backtest,
+            create_results_summary,
+            get_backtest_history
+        ]
+    )
+
+    _initialized = True
+    print("✅ Lazy initialization complete")
 
 @app.entrypoint
 def invoke(payload, context=None):
     """Main entrypoint for the backtesting agent"""
     try:
+        # Lazy initialization on first call
+        _ensure_initialized()
+
+        global _quant_agent, _generated_strategy_code, _last_backtest_result
+
+        # Reset before each run
+        _generated_strategy_code = None
+        _last_backtest_result = None
+
         print(f"🚀 AgentCore Runtime: Backtesting Agent processing request")
         print(f"📥 Payload received: {payload}")
 
@@ -863,11 +1017,32 @@ def invoke(payload, context=None):
         if isinstance(payload, str):
             import json
             payload = json.loads(payload)
-        
-        result = quant_agent(payload.get("prompt"))
-        
-        return {"result": result.message}
-        
+
+        result = _quant_agent(payload.get("prompt"))
+
+        # Use _last_backtest_result directly (set by run_backtest tool)
+        # This is more reliable than reading from Memory which may return stale data
+        trades = []
+        trade_summary = {}
+        if _last_backtest_result:
+            trades = _last_backtest_result.get('trades', [])
+            trade_summary = _last_backtest_result.get('trade_summary', {})
+            print(f"📊 invoke() returning {len(trades)} trades from _last_backtest_result")
+        else:
+            print(f"⚠️ invoke() _last_backtest_result is None, falling back to Memory")
+            latest = get_backtest_results_from_memory()
+            if latest:
+                trades = latest.get('trades', [])
+                trade_summary = latest.get('trade_summary', {})
+                print(f"📊 invoke() returning {len(trades)} trades from Memory")
+
+        return {
+            "result": result.message,
+            "strategy_code": _generated_strategy_code,
+            "trades": trades,
+            "trade_summary": trade_summary
+        }
+
     except Exception as e:
         print(f"❌ Error in invoke function: {e}")
         import traceback

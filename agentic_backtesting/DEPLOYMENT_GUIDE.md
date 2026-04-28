@@ -177,44 +177,11 @@ Before deploying the Quant Agent, you need to deploy the Market Data MCP tool th
 For detailed deployment instructions, refer to:
 - `backend-agents/quant-agent/tools/market_data_mcp/deployment/README.md`
 
-#### 1.3.2 Create Cognito User
+#### 1.3.2 Authentication Configuration
 
-The Quant Agent uses Cognito authentication to access the Market Data Gateway.
+**Note:** The system now uses **client_credentials** OAuth grant type (machine-to-machine authentication) instead of user password authentication. You no longer need to manually create Cognito users.
 
-1. **Navigate to AWS Cognito Console:**
-   - Go to: https://console.aws.amazon.com/cognito/
-   - Select your region (e.g., us-east-1)
-
-2. **Find the User Pool:**
-   - Look for the User Pool created in step 1.3.1
-   - User Pool ID format: `us-east-1_xxxxxxxxx`
-
-3. **Create a new user:**
-   - Click on the User Pool
-   - Go to "Users" tab
-   - Click "Create user"
-   - Fill in the details:
-     - **Username**: `mcp-test-user` (or your preferred username)
-     - **Email**: Your email address (optional)
-     - **Temporary password**: Create a strong password
-     - Uncheck "Send an email invitation" if you don't want email verification
-     - Check "Mark email address as verified" if providing an email
-
-4. **Set permanent password:**
-   - After creating the user, you may need to change the temporary password
-   - Use AWS CLI to set a permanent password:
-     ```bash
-     aws cognito-idp admin-set-user-password \
-       --user-pool-id us-east-1_xxxxxxxxx \
-       --username mcp-test-user \
-       --password "YourStrongPassword123!" \
-       --permanent
-     ```
-
-5. **Save credentials:**
-   - **Username**: `mcp-test-user`
-   - **Password**: `YourStrongPassword123!`
-   - You'll need these for the Quant Agent `.env` file
+The deployment script in step 1.3.1 automatically configures the Cognito App Client with the appropriate settings for client_credentials flow. The Quant Agent authenticates directly using the Client ID and Client Secret.
 
 #### 1.3.3 Deploy Quant Agent
 
@@ -237,12 +204,11 @@ The Quant Agent uses Cognito authentication to access the Market Data Gateway.
    STRATEGY_GENERATOR_RUNTIME_ARN=arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/strategy_generator-XJMGBxAgBL
    BACKTEST_SUMMARY_RUNTIME_ARN=arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/results_summary-zug3B14PlT
 
-   # Cognito Authentication Configuration (from steps 1.3.1 and 1.3.2)
+   # Cognito Authentication Configuration (from step 1.3.1)
+   # Using client_credentials grant (machine-to-machine auth)
    COGNITO_USER_POOL_ID=us-east-1_xxxxxxxxx
    COGNITO_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
    COGNITO_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-   COGNITO_USERNAME=mcp-test-user
-   COGNITO_PASSWORD=YourStrongPassword123!
 
    # AWS Configuration
    AWS_REGION=us-east-1

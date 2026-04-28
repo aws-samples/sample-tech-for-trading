@@ -31,6 +31,9 @@ export interface AgentOutput {
   stop_loss: string;
   take_profit: string;
   max_positions: number;
+  buy_conditions?: string;
+  sell_conditions?: string;
+  backtest_window?: string;
   profit_loss?: string;
   sharpe_ratio?: string;
   executive_summary?: string;
@@ -41,6 +44,48 @@ export interface AgentOutput {
     considerTesting?: string[];
   };
   analysis_text?: string; // Full markdown analysis from agent
+  strategy_code?: string; // Generated Backtrader strategy Python code
+  trades?: Trade[];
+  trade_summary?: TradeSummary;
+}
+
+// Individual trade record from Backtrader
+export interface Trade {
+  entry_date: string;
+  exit_date: string;
+  entry_price: number;
+  exit_price: number;
+  shares: number;
+  pnl: number;
+  pnl_pct: number;
+  commission: number;
+  direction: 'LONG' | 'SHORT';
+}
+
+// Trade summary statistics
+export interface TradeSummary {
+  total_trades: number;
+  total_open: number;
+  total_closed: number;
+  won: number;
+  lost: number;
+  win_rate: number;
+}
+
+// Complete backtest record stored in AgentCore Memory
+export interface BacktestMemoryRecord {
+  timestamp: string;
+  symbol: string;
+  performance: {
+    initial_value: number;
+    final_value: number;
+    total_return: number;
+    metrics: Record<string, string>;
+    strategy_class: string;
+  };
+  trade_summary: TradeSummary;
+  trades: Trade[];
+  strategy_code: string | null;
 }
 
 export interface StockOption {

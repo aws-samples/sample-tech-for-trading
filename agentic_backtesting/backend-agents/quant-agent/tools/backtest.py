@@ -7,6 +7,67 @@ import pandas as pd
 from io import StringIO
 from typing import Dict, Any
 
+class TradeRecorder(bt.Analyzer):
+    """Analyzer that records individual trade details.
+
+    Captures entry info when trade opens (isopen), then calculates exit price
+    from PnL when trade closes (isclosed). This avoids relying on trade.history
+    which may be empty depending on Backtrader version/execution mode.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.trade_log = []
+        self._open_trades = {}  # trade.ref -> {entry_price, size}
+
+    def notify_trade(self, trade):
+        if trade.isopen:
+            # Capture entry info when trade opens
+            self._open_trades[trade.ref] = {
+                'entry_price': trade.price,
+                'size': trade.size,
+            }
+
+        if trade.isclosed:
+            open_info = self._open_trades.pop(trade.ref, None)
+            if open_info:
+                entry_price = round(open_info['entry_price'], 2)
+                size = abs(open_info['size'])
+                direction = 'LONG' if open_info['size'] > 0 else 'SHORT'
+            else:
+                entry_price = round(trade.price, 2)
+                size = 0
+                direction = 'LONG'
+
+            pnl = round(trade.pnl, 2)
+
+            # Calculate exit price from entry price and PnL
+            if size > 0 and entry_price > 0:
+                pnl_per_share = pnl / size
+                if direction == 'LONG':
+                    exit_price = round(entry_price + pnl_per_share, 2)
+                else:
+                    exit_price = round(entry_price - pnl_per_share, 2)
+                pnl_pct = round(pnl / (entry_price * size) * 100, 2)
+            else:
+                exit_price = entry_price
+                pnl_pct = 0
+
+            self.trade_log.append({
+                'entry_date': bt.num2date(trade.dtopen).strftime('%Y-%m-%d'),
+                'exit_date': bt.num2date(trade.dtclose).strftime('%Y-%m-%d'),
+                'entry_price': entry_price,
+                'exit_price': exit_price,
+                'shares': size,
+                'pnl': pnl,
+                'pnl_pct': pnl_pct,
+                'commission': round(trade.commission, 2),
+                'direction': direction
+            })
+
+    def get_analysis(self):
+        return {'trade_log': self.trade_log}
+
 class BacktestTool():
     """Tool that executes backtests using Backtrader"""
     
@@ -186,10 +247,13 @@ class BacktestTool():
             # STEP 10: Add analyzers
             print(f"📊 STEP 8: Adding analyzers...")
             try:
-                cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe')
+                cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe',
+                                    timeframe=bt.TimeFrame.Days, annualize=True)
                 cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
                 cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
-                print(f"✅ Analyzers SharpeRatio, Returns, DrawDown added successfully")
+                cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='trades')
+                cerebro.addanalyzer(TradeRecorder, _name='trade_recorder')
+                print(f"✅ Analyzers SharpeRatio, Returns, DrawDown, TradeAnalyzer, TradeRecorder added")
             except Exception as e:
                 print(f"❌ Analyzer addition failed: {e}")
                 return {'error': f'Analyzer addition failed: {str(e)}'}
@@ -238,18 +302,45 @@ class BacktestTool():
             print(f"📈 STEP 10: Extracting results...")
             try:
                 strat = results[0]
-                
+
+                # Extract trade records from TradeRecorder analyzer
+                trade_analysis = strat.analyzers.trades.get_analysis()
+                recorder_analysis = strat.analyzers.trade_recorder.get_analysis()
+                trades_list = recorder_analysis.get('trade_log', [])
+
+                # Build trade summary from TradeAnalyzer
+                trade_summary = {
+                    'total_trades': trade_analysis.get('total', {}).get('total', 0),
+                    'total_open': trade_analysis.get('total', {}).get('open', 0),
+                    'total_closed': trade_analysis.get('total', {}).get('closed', 0),
+                    'won': trade_analysis.get('won', {}).get('total', 0),
+                    'lost': trade_analysis.get('lost', {}).get('total', 0),
+                    'win_rate': 0
+                }
+                if trade_summary['total_closed'] > 0:
+                    trade_summary['win_rate'] = round(trade_summary['won'] / trade_summary['total_closed'] * 100, 1)
+
+                # Extract Sharpe Ratio safely (get_analysis() returns OrderedDict, not object)
+                sharpe_analysis = strat.analyzers.sharpe.get_analysis()
+                sharpe_value = sharpe_analysis.get('sharperatio', None)
+                if sharpe_value is not None:
+                    sharpe_display = round(sharpe_value, 4)
+                else:
+                    sharpe_display = 'N/A'
+
                 return {
                     'initial_value': initial_value,
                     'final_value': final_value,
                     'total_return': (final_value - initial_value) / initial_value * 100,
                     'metrics': {
-                        'Sharpe Ratio': getattr(strat.analyzers.sharpe.get_analysis(), 'sharperatio', 'N/A'),
+                        'Sharpe Ratio': sharpe_display,
                         'Max Drawdown': f"{strat.analyzers.drawdown.get_analysis()['max']['drawdown']:.2f}%",
                         'Total Return': f"{((final_value - initial_value) / initial_value * 100):.2f}%"
                     },
                     'symbol': symbol,
-                    'strategy_class': strategy_class.__name__
+                    'strategy_class': strategy_class.__name__,
+                    'trades': trades_list,
+                    'trade_summary': trade_summary
                 }
                 
             except Exception as e:

@@ -33,19 +33,16 @@ Always return complete, runnable Python code with proper imports and class struc
         
         # Get Strategy Generator specific configuration from environment
         aws_region = os.getenv('AWS_REGION', 'us-east-1')
-        model_id = os.getenv('STRATEGY_GENERATOR_MODEL_ID', 'us.anthropic.claude-sonnet-4-20250514-v1:0')
-        temperature = float(os.getenv('STRATEGY_GENERATOR_TEMPERATURE', '0.3'))
-        
+        model_id = os.getenv('STRATEGY_GENERATOR_MODEL_ID', 'us.anthropic.claude-opus-4-7')
+
         print(f"🔧 Strategy Generator Configuration:")
         print(f"   Model ID: {model_id}")
         print(f"   Region: {aws_region}")
-        print(f"   Temperature: {temperature}")
-        
+
         # Create dedicated model for Strategy Generator
         strategy_model = BedrockModel(
             model_id=model_id,
             region_name=aws_region,
-            temperature=temperature,
         )
 
         self.agent = Agent(
@@ -136,12 +133,22 @@ Return only the Python code, no explanations.
 """
 
 
-agent = StrategyGeneratorAgent()
+# Lazy initialization to avoid cold start timeout
+_initialized = False
+_agent = None
+
+def _ensure_initialized():
+    """Initialize the agent only on first call to avoid cold start timeout"""
+    global _initialized, _agent
+    if _initialized:
+        return
+    _agent = StrategyGeneratorAgent()
+    _initialized = True
 
 @app.entrypoint
 def invoke(payload, context=None):
     """Main entrypoint for the backtesting agent
-    
+
     payload: expected json or str:
     {
             "name": "EMA Crossover Strategy",
@@ -153,8 +160,9 @@ def invoke(payload, context=None):
             "buy_conditions":  "Price above 20-day moving average and RSI below 70",
             "sell_conditions": "Price below 20-day moving average or RSI above 80"
         }
-    """  
-    return agent.process(payload)
+    """
+    _ensure_initialized()
+    return _agent.process(payload)
 
 
 if __name__ == "__main__":

@@ -50,7 +50,7 @@ class AgentCoreAPI {
 
   private async pollForResults(jobId: string, strategyInput: StrategyInput): Promise<AgentOutput> {
     const maxAttempts = 60; // 5 minutes max
-    const pollInterval = 5000; // 5 seconds
+    const pollInterval = 15000; // 15 seconds
     
     for (let i = 0; i < maxAttempts; i++) {
       if (i > 0) {

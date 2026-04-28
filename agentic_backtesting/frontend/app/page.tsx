@@ -14,10 +14,10 @@ export default function StrategyBuilder() {
   const [formData, setFormData] = useState({
     name: 'My Trading Strategy',
     stock_symbol: 'AMZN',
-    backtest_window: '1Y',
-    max_positions: 1,
-    stop_loss: 5,
-    take_profit: 10,
+    backtest_window: '10Y',
+    max_positions: 1000,
+    stop_loss: 10,
+    take_profit: 30,
     buy_conditions: '10 SMA crosses above 30 SMA',
     sell_conditions: '10 SMA crosses below 30 SMA'
   });
