@@ -9,6 +9,8 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { AgentOutput, Trade, TradeSummary } from '@/types/strategy';
 import { FRONTEND_VERSION } from '@/lib/version';
 
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
 // Convert decimal ratios (e.g. 0.5, -0.12) to percentage strings (e.g. "50.00%", "-12.00%")
 // Already-formatted strings with "%" are returned as-is; "N/A" passes through unchanged.
 function formatAsPercent(value: string | number | undefined): string {
@@ -63,7 +65,7 @@ function ResultsDisplayContent() {
       try {
         console.log(`[Results] 🔄 Polling attempt ${i + 1}/${maxAttempts} for job ${jobId}`);
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/api/execute-backtest-async?jobId=${jobId}`);
+        const response = await fetch(`${BASE_PATH}/api/execute-backtest-async?jobId=${jobId}`);
         const result = await response.json();
 
         console.log('[Results] Poll result status:', result.status);

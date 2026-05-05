@@ -4,6 +4,8 @@
 
 import { StrategyInput, AgentOutput, AgentCoreResponse } from '@/types/strategy';
 
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
 class AgentCoreAPI {
   private useMockData: boolean;
 
@@ -21,7 +23,7 @@ class AgentCoreAPI {
     try {
       console.log('[API] Starting async backtest...');
       // Start async job
-      const startResponse = await fetch('/api/execute-backtest-async', {
+      const startResponse = await fetch(`${BASE_PATH}/api/execute-backtest-async`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(strategyInput),
@@ -58,7 +60,7 @@ class AgentCoreAPI {
       }
       
       console.log(`[API] Polling attempt ${i + 1}/${maxAttempts}...`);
-      const response = await fetch(`/api/execute-backtest-async?jobId=${jobId}`);
+      const response = await fetch(`${BASE_PATH}/api/execute-backtest-async?jobId=${jobId}`);
       const result = await response.json();
       console.log('[API] Poll result:', result.status);
       

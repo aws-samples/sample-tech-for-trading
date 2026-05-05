@@ -10,6 +10,8 @@ import AnimatedButton from '@/components/ui/AnimatedButton';
 import { AVAILABLE_STOCKS, ValidationResult } from '@/types/strategy';
 import { FRONTEND_VERSION } from '@/lib/version';
 
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
 export default function StrategyBuilder() {
   const router = useRouter();
   const [formData, setFormData] = useState({
@@ -78,7 +80,7 @@ export default function StrategyBuilder() {
 
     try {
       // Start the backtest job
-      const response = await fetch('/api/execute-backtest-async', {
+      const response = await fetch(`${BASE_PATH}/api/execute-backtest-async`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
