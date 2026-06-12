@@ -712,7 +712,7 @@ function ResultsDisplayContent() {
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.7 }}
-          className="flex justify-center"
+          className="flex justify-center gap-4"
         >
           <AnimatedButton
             onClick={handleNewStrategy}
@@ -722,6 +722,14 @@ function ResultsDisplayContent() {
             className="text-xl px-8 py-4"
           >
             🚀 Try Another Strategy
+          </AnimatedButton>
+          <AnimatedButton
+            onClick={() => router.push('/chat')}
+            variant="primary"
+            size="lg"
+            className="text-xl px-8 py-4"
+          >
+            💬 Chat with Quant Assistant
           </AnimatedButton>
         </motion.div>
 
