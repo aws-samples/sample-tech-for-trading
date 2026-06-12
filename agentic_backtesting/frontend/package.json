@@ -9,7 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-agentcore": "^3.700.0",
+    "@aws-sdk/client-bedrock-agentcore": "^3.987.0",
     "chart.js": "^3.9.1",
     "clsx": "^2.0.0",
     "framer-motion": "^10.18.0",
