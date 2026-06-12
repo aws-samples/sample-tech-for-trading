@@ -11,7 +11,7 @@ fi
 # Default configuration
 AWS_REGION="${AWS_REGION:-us-east-1}"
 
-Deploy Strategy Generator Agent
+# Deploy Strategy Generator Agent
 echo "=================================================="
 echo "📦 Deploying Strategy Generator Agent"
 echo "=================================================="
@@ -26,7 +26,9 @@ if [ -f "strategy_generator.py" ]; then
     agentcore configure \
         --entrypoint strategy_generator.py \
         --name strategy_generator \
-        --requirements-file requirements.txt
+        --requirements-file requirements.txt \
+        --idle-timeout 900 \
+        --non-interactive
     
     # Build environment variables from .env file
     echo "🔧 Preparing environment variables from .env..."

@@ -119,6 +119,14 @@ export default function StrategyBuilder() {
           <p className="text-xl text-gray-300 max-w-3xl">
             Multi-agent trading strategy backtesting with Strands agent and Amazon Bedrock AgentCore
           </p>
+          <div className="mt-4">
+            <a
+              href={`${BASE_PATH}/chat`}
+              className="inline-flex items-center text-accent-blue hover:text-accent-purple transition-colors text-sm border border-accent-blue/30 hover:border-accent-purple/30 rounded-lg px-4 py-2"
+            >
+              💬 Chat with Quant Assistant — Analyze past backtests &amp; get improvement suggestions
+            </a>
+          </div>
         </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

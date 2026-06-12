@@ -214,6 +214,9 @@ print(json.dumps(result, default=str))
         # Store result for downstream tools
         config._last_backtest_result = result
 
+        # Persist to AgentCore Memory so chat mode / history can retrieve it
+        config.save_backtest_results_to_memory_sync(result, strategy_code=strategy_code)
+
         print("=" * 50)
         return result
 

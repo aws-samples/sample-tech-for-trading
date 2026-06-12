@@ -31,6 +31,7 @@ _memory_client = None
 _memory_id = None
 _session_id = None
 _quant_agent = None
+_chat_agent = None  # Chat mode agent for analyzing historical backtests
 _region_name = None
 _generated_strategy_code = None
 _last_backtest_result = None  # Store last backtest result directly (trades, trade_summary)

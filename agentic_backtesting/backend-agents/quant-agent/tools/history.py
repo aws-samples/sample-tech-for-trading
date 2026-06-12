@@ -41,9 +41,28 @@ def get_backtest_history(symbol: str = None, limit: int = 10) -> dict:
         records = []
         for event in reversed(events_list):  # Most recent first
             try:
-                messages = event.get('messages', [])
+                # AgentCore Memory may return events under 'payload' with
+                # 'conversational' message wrappers, or plain 'messages'
+                messages = event.get('payload', event.get('messages', []))
                 for msg in messages:
-                    content = msg.get('content', '') if isinstance(msg, dict) else str(msg)
+                    content = ""
+                    if isinstance(msg, dict):
+                        conv = msg.get('conversational', {})
+                        if conv:
+                            conv_content = conv.get('content', {})
+                            if isinstance(conv_content, dict):
+                                content = conv_content.get('text', '')
+                            else:
+                                content = str(conv_content)
+                        else:
+                            content = msg.get('content', msg.get('text', ''))
+                            if isinstance(content, dict):
+                                content = content.get('text', str(content))
+                    elif isinstance(msg, str):
+                        content = msg
+                    else:
+                        content = str(msg)
+
                     if 'Backtest result:' in content:
                         json_part = content.split('Backtest result:', 1)[1].strip()
                         record = json.loads(json_part)

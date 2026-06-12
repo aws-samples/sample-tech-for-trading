@@ -6,5 +6,6 @@ backtrader==1.9.78.123
 boto3>=1.26.0
 python-dotenv>=1.0.0
 httpx>=0.24.0
+requests>=2.28.0
 bedrock-agentcore-starter-toolkit
 

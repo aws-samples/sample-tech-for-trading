@@ -9,6 +9,14 @@ Parameters:
     Type: String
   AgentCoreArn:
     Type: String
+  CloudFrontPrefixListId:
+    Type: String
+    Default: pl-b6a144df  # com.amazonaws.global.cloudfront.origin-facing (us-east-2)
+    Description: Managed prefix list ID for CloudFront origin-facing IPs in this region
+  OriginVerifySecret:
+    Type: String
+    NoEcho: true
+    Description: Secret header value CloudFront adds; ALB only forwards requests carrying it
 
 Resources:
   # VPC
@@ -130,7 +138,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          SourcePrefixListId: !Sub 'pl-3b927c52'  # CloudFront prefix list for us-east-1
+          SourcePrefixListId: !Ref CloudFrontPrefixListId
 
   ECSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -166,6 +174,14 @@ Resources:
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 3
+      # Job results live in container memory; pin each client to one task
+      TargetGroupAttributes:
+        - Key: stickiness.enabled
+          Value: 'true'
+        - Key: stickiness.type
+          Value: lb_cookie
+        - Key: stickiness.lb_cookie.duration_seconds
+          Value: '3600'
 
   Listener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -174,6 +190,25 @@ Resources:
       Port: 80
       Protocol: HTTP
       DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            StatusCode: '403'
+            ContentType: text/plain
+            MessageBody: Forbidden
+
+  # Only requests carrying the CloudFront origin secret header reach the app
+  OriginVerifyListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref Listener
+      Priority: 1
+      Conditions:
+        - Field: http-header
+          HttpHeaderConfig:
+            HttpHeaderName: X-Origin-Verify
+            Values:
+              - !Ref OriginVerifySecret
+      Actions:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
 
@@ -332,6 +367,9 @@ Resources:
               OriginProtocolPolicy: http-only
               OriginReadTimeout: 60
               OriginKeepaliveTimeout: 5
+            OriginCustomHeaders:
+              - HeaderName: X-Origin-Verify
+                HeaderValue: !Ref OriginVerifySecret
         DefaultCacheBehavior:
           TargetOriginId: ALBOrigin
           ViewerProtocolPolicy: redirect-to-https

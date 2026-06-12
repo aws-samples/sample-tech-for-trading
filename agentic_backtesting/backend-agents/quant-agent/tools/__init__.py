@@ -9,6 +9,11 @@ from tools.backtest_tool_sandbox import run_backtest
 from tools.results_summary import create_results_summary
 from tools.history import get_backtest_history
 
+# Optional: use the A2A version as the strategy generator
+# (requires STRATEGY_GENERATOR_A2A_ARN and the strategy-generator-a2a-agent deployed)
+#from tools.strategy_generator_a2a import generate_trading_strategy_a2a
+#generate_trading_strategy = generate_trading_strategy_a2a
+
 __all__ = [
     'BacktestTool',
     'generate_trading_strategy',

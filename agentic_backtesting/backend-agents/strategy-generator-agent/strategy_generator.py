@@ -1,5 +1,6 @@
 """
 Strategy Generator Agent - Converts JSON strategy config to executable Backtrader code
+With AgentCore Memory integration for cross-session learning
 """
 
 import json
@@ -9,6 +10,7 @@ from datetime import datetime
 from strands import Agent
 from strands.models import BedrockModel
 from bedrock_agentcore import BedrockAgentCoreApp
+from bedrock_agentcore.memory import MemoryClient
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -19,6 +21,56 @@ VERSION = os.getenv('AGENT_VERSION', datetime.now().strftime('%Y%m%d_%H%M%S'))
 
 # Initialize the AgentCore app
 app = BedrockAgentCoreApp()
+
+# Memory globals
+_memory_client = None
+_memory_id = None
+_session_id = None
+
+
+def save_to_memory(input_config: Dict, generated_code: str):
+    """Save generated strategy to AgentCore Memory for future reference"""
+    global _memory_client, _memory_id, _session_id
+    try:
+        strategy_name = input_config.get('name', 'unknown')
+        symbol = input_config.get('stock_symbol', 'unknown')
+        message = (
+            f"Generated strategy '{strategy_name}' for {symbol}. "
+            f"Config: {json.dumps(input_config)}. "
+            f"Code preview: {generated_code[:500]}"
+        )
+        _memory_client.create_event(
+            memory_id=_memory_id,
+            actor_id="StrategyGenerator",
+            session_id=_session_id,
+            messages=[(message, "ASSISTANT")]
+        )
+        print(f"💾 Strategy '{strategy_name}' saved to memory")
+    except Exception as e:
+        print(f"⚠️ Failed to save to memory: {e}")
+
+
+def get_past_strategies(symbol: str = None) -> list:
+    """Retrieve past strategy generations from memory for context"""
+    global _memory_client, _memory_id, _session_id
+    try:
+        events = _memory_client.list_events(
+            memory_id=_memory_id,
+            actor_id="StrategyGenerator",
+            session_id=_session_id
+        )
+        strategies = []
+        events_list = events.get('events', []) if isinstance(events, dict) else events
+        for event in events_list:
+            for msg in event.get('messages', []):
+                content = msg.get('content', '') if isinstance(msg, dict) else str(msg)
+                if 'Generated strategy' in content:
+                    if symbol is None or symbol.upper() in content.upper():
+                        strategies.append(content)
+        return strategies[-5:]  # Return last 5 relevant strategies
+    except Exception as e:
+        print(f"⚠️ Failed to retrieve memory: {e}")
+        return []
 
 
 class StrategyGeneratorAgent():
@@ -33,7 +85,12 @@ Generate clean, efficient Backtrader strategy code that:
 3. Handles stop loss and take profit if specified
 4. Includes proper error handling and parameter validation
 
-Always return complete, runnable Python code with proper imports and class structure."""
+Always return complete, runnable Python code with proper imports and class structure.
+
+If past strategies are provided as context, learn from them:
+- Avoid patterns that previously caused errors
+- Reuse successful indicator combinations
+- Improve on previous implementations"""
         
         # Get Strategy Generator specific configuration from environment
         aws_region = os.getenv('AWS_REGION', 'us-east-1')
@@ -60,12 +117,25 @@ Always return complete, runnable Python code with proper imports and class struc
         """Convert query and market data to Backtrader code"""
         if isinstance(input_data, str):
             strategy_config = json.loads(input_data)
-            prompt = self._create_strategy_prompt(strategy_config)
         else:
-            prompt = self._create_strategy_prompt(input_data)
-            
-        # print(f"FULL prompt: {prompt}")
-        return self.agent(prompt)
+            strategy_config = input_data
+
+        prompt = self._create_strategy_prompt(strategy_config)
+
+        # Get past strategies from memory for context
+        past = get_past_strategies(strategy_config.get('stock_symbol'))
+        if past:
+            context = "\n\nPreviously generated strategies for reference:\n" + "\n---\n".join(past[-3:])
+            prompt += context
+
+        # Generate strategy
+        result = self.agent(prompt)
+
+        # Save to memory
+        result_str = str(result) if result else ""
+        save_to_memory(strategy_config, result_str)
+
+        return result
     
     def _create_strategy_prompt(self, config: Dict[str, Any]) -> str:
         """Create detailed prompt for strategy generation """
@@ -143,10 +213,23 @@ _initialized = False
 _agent = None
 
 def _ensure_initialized():
-    """Initialize the agent only on first call to avoid cold start timeout"""
-    global _initialized, _agent
+    """Initialize the agent and memory on first call to avoid cold start timeout"""
+    global _initialized, _agent, _memory_client, _memory_id, _session_id
     if _initialized:
         return
+
+    # Initialize memory client
+    aws_region = os.getenv('AWS_REGION', 'us-east-1')
+    _memory_client = MemoryClient(region_name=aws_region)
+    _memory_id = os.getenv('STRATEGY_GENERATOR_MEMORY_ID')
+    _session_id = f"strategy_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+    if _memory_id:
+        print(f"🧠 Memory enabled: {_memory_id}")
+        print(f"🔑 Session ID: {_session_id}")
+    else:
+        print("⚠️ STRATEGY_GENERATOR_MEMORY_ID not set — memory disabled")
+
     _agent = StrategyGeneratorAgent()
     _initialized = True
 
@@ -167,6 +250,14 @@ def invoke(payload, context=None):
         }
     """
     _ensure_initialized()
+    # Handle both direct strategy JSON and {"prompt": "..."} wrapper from invoke_agent_runtime
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except Exception:
+            pass
+    if isinstance(payload, dict) and "prompt" in payload:
+        payload = payload["prompt"]
     strategy_code = _agent.process(payload)
     return {
         "code": str(strategy_code),

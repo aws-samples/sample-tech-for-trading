@@ -88,6 +88,32 @@ CRITICAL RULES:
         ]
     )
 
+    # Create chat mode agent for analyzing historical backtests
+    config._chat_agent = Agent(
+        model=_quant_model,
+        system_prompt="""You are the Quant Research Assistant. You help quants analyze their historical backtesting results and suggest strategy improvements.
+
+You have access to the get_backtest_history tool which retrieves past backtest records including:
+- Strategy description (plain English)
+- Generated strategy code (Backtrader Python code)
+- Trade records (entry/exit dates, prices, P&L)
+- Performance metrics (Sharpe ratio, max drawdown, total return, win rate)
+
+When users ask about their strategies:
+1. Use get_backtest_history to retrieve relevant historical runs
+2. Analyze patterns across multiple backtests
+3. Identify strengths and weaknesses (focus on risk-adjusted returns, drawdowns, consistency)
+4. Suggest specific improvements with rationale (e.g., parameter adjustments, risk management, position sizing)
+5. Compare performance across different strategies/parameters when applicable
+
+Be quantitative in your analysis. Reference specific metrics and trades. When suggesting improvements, explain the expected impact on risk-adjusted returns.
+
+If no historical data is found, inform the user that no backtest history exists yet and suggest running a backtest first.
+
+Always be concise but thorough. Prioritize actionable insights over generic advice.""",
+        tools=[get_backtest_history]
+    )
+
     print("✅ Lazy initialization complete")
 
 
@@ -98,10 +124,6 @@ def invoke(payload, context=None):
         # Lazy initialization on first call
         _ensure_initialized()
 
-        # Reset before each run
-        config._generated_strategy_code = None
-        config._last_backtest_result = None
-
         print(f"🚀 AgentCore Runtime: Backtesting Agent processing request")
         print(f"📥 Payload received: {payload}")
 
@@ -109,6 +131,23 @@ def invoke(payload, context=None):
         if isinstance(payload, str):
             import json
             payload = json.loads(payload)
+
+        # Check if this is a chat mode request
+        mode = payload.get("mode", "backtest")
+
+        if mode == "chat":
+            print("💬 Chat mode: Using chat agent for historical analysis")
+            result = config._chat_agent(payload.get("prompt"))
+            return {
+                "result": result.message
+            }
+
+        # Default: backtest execution mode
+        print("🔬 Backtest mode: Using quant agent for 4-step backtest execution")
+
+        # Reset before each run
+        config._generated_strategy_code = None
+        config._last_backtest_result = None
 
         result = config._quant_agent(payload.get("prompt"))
 
