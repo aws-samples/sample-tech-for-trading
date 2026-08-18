@@ -69,3 +69,8 @@ Thumbs.db
 
 # Lambda packages
 *.zip
+
+# AgentCore deployment state (account IDs, ARNs, session IDs)
+.bedrock_agentcore.yaml
+.bedrock_agentcore.yaml.*.bak
+.bedrock_agentcore/
