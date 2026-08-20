@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "^3.987.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.1113.0",
     "chart.js": "^3.9.1",
     "clsx": "^2.0.0",
     "framer-motion": "^10.18.0",
+    "jose": "^6.2.9",
     "next": "14.2.0",
     "react": "^18.2.0",
     "react-chartjs-2": "^4.3.1",

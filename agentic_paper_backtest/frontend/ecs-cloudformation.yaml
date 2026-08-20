@@ -17,6 +17,14 @@ Parameters:
     Type: String
     NoEcho: true
     Description: Secret header value CloudFront adds; ALB only forwards requests carrying it
+  CognitoUserPoolId:
+    Type: String
+    Default: ''
+    Description: Cognito user pool ID for frontend login (empty disables auth)
+  CognitoAppClientId:
+    Type: String
+    Default: ''
+    Description: Cognito app client ID (no secret, USER_PASSWORD_AUTH enabled)
 
 Resources:
   # VPC
@@ -274,6 +282,12 @@ Resources:
               Value: !Ref AWS::Region
             - Name: NODE_ENV
               Value: production
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPoolId
+            - Name: COGNITO_APP_CLIENT_ID
+              Value: !Ref CognitoAppClientId
+            - Name: COGNITO_REGION
+              Value: !Ref AWS::Region
           LogConfiguration:
             LogDriver: awslogs
             Options:

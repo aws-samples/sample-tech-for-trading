@@ -71,6 +71,11 @@ CloudFront is the only public entry point; the ALB only accepts traffic from the
 CloudFront origin-facing prefix list and requires an `X-Origin-Verify` secret header,
 and ECS tasks run in private subnets.
 
+The site requires Cognito login (app-layer JWT auth): the Next.js middleware verifies
+the Cognito access token from an httpOnly cookie and redirects unauthenticated visitors
+to `/login`. Set `COGNITO_USER_POOL_ID` / `COGNITO_APP_CLIENT_ID` in `.env.local`
+(users are admin-created only; the app client uses USER_PASSWORD_AUTH without a secret).
+
 ```bash
 cd frontend
 ./deploy.sh            # full deploy: ECR + Docker build/push + CloudFormation stack

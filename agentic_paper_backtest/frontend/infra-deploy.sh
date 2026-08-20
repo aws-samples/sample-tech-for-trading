@@ -45,6 +45,8 @@ aws cloudformation deploy \
     AgentCoreArn="$AGENTCORE_ARN" \
     CloudFrontPrefixListId="$CF_PREFIX_LIST_ID" \
     OriginVerifySecret="$ORIGIN_VERIFY_SECRET" \
+    CognitoUserPoolId="${COGNITO_USER_POOL_ID:-}" \
+    CognitoAppClientId="${COGNITO_APP_CLIENT_ID:-}" \
   --capabilities CAPABILITY_IAM \
   --region us-east-2
 
