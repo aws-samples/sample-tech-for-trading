@@ -45,6 +45,7 @@ reuses the resources already deployed by `agentic_backtesting`:
 
 - `backend-agents/paper-quant-agent/` — the orchestrator agent (deployed to AgentCore Runtime)
 - `frontend/` — Next.js app with PDF upload (runs locally with `npm run dev`)
+- `eval/` — AgentCore Evaluation assets: 3 custom evaluators + scripts + guidance ([eval/README.md](./eval/README.md))
 
 ## Deployment
 
