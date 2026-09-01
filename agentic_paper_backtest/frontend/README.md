@@ -25,7 +25,49 @@ A Next.js application for uploading trading research papers (PDF) and backtestin
 npm install
 ```
 
-### 2. Configure Environment
+### 2. Create the Login User Pool (Cognito)
+
+The app requires login: `middleware.ts` verifies a Cognito access token (JWT)
+on every request and redirects unauthenticated visitors to `/login`. This user
+pool is **only for frontend login** — it is separate from the Cognito resources
+the backend Gateway uses.
+
+Create the pool, an app client (no secret, USER_PASSWORD_AUTH), and your user
+— one-time setup, ~1 minute:
+
+```bash
+export AWS_REGION=us-east-1   # your region
+
+# 1. User pool: admin-created users only, simple password policy
+POOL_ID=$(aws cognito-idp create-user-pool \
+  --pool-name paper-backtest-frontend-auth \
+  --policies 'PasswordPolicy={MinimumLength=6,RequireUppercase=false,RequireLowercase=false,RequireNumbers=false,RequireSymbols=false}' \
+  --admin-create-user-config 'AllowAdminCreateUserOnly=true' \
+  --query 'UserPool.Id' --output text)
+
+# 2. App client: no secret, password auth enabled
+CLIENT_ID=$(aws cognito-idp create-user-pool-client \
+  --user-pool-id "$POOL_ID" --client-name paper-backtest-web \
+  --no-generate-secret \
+  --explicit-auth-flows ALLOW_USER_PASSWORD_AUTH ALLOW_REFRESH_TOKEN_AUTH \
+  --query 'UserPoolClient.ClientId' --output text)
+
+# 3. Your login user (password set as permanent — no forced reset)
+aws cognito-idp admin-create-user --user-pool-id "$POOL_ID" \
+  --username demo --message-action SUPPRESS
+aws cognito-idp admin-set-user-password --user-pool-id "$POOL_ID" \
+  --username demo --password 'YourPassword1' --permanent
+
+echo "COGNITO_USER_POOL_ID=$POOL_ID"
+echo "COGNITO_APP_CLIENT_ID=$CLIENT_ID"
+```
+
+(Console alternative: Amazon Cognito → Create user pool → sign-in with
+username → disable self-registration → create an app client **without** a
+client secret and enable `ALLOW_USER_PASSWORD_AUTH` → add a user under
+Users → copy the Pool ID and Client ID.)
+
+### 3. Configure Environment
 
 Copy `.env.example` to `.env.local` and fill in your values (all are read
 server-side by Next.js API routes — never expose credentials with a
@@ -35,7 +77,7 @@ server-side by Next.js API routes — never expose credentials with a
 AWS_REGION=us-east-1
 AGENTCORE_ARN=arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/your-agent-runtime-id
 
-# Cognito login (see DEPLOYMENT_GUIDE.md for user pool creation)
+# From step 2 (the two echo lines)
 COGNITO_USER_POOL_ID=us-east-1_xxxxxxxxx
 COGNITO_APP_CLIENT_ID=your-app-client-id
 COGNITO_REGION=us-east-1
@@ -44,13 +86,21 @@ COGNITO_REGION=us-east-1
 AWS credentials come from your local AWS profile / IAM role (e.g.
 `AWS_PROFILE=default npm run dev`); do not put access keys in this file.
 
-### 3. Run Development Server
+### 4. Run Development Server
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Open [http://localhost:3000](http://localhost:3000) — you'll be redirected to
+`/login`; sign in with the user created in step 2 (e.g. `demo` / `YourPassword1`).
+
+**Troubleshooting login:**
+- Redirect loop / instant 401 → `COGNITO_*` values missing or from the wrong
+  pool; restart `npm run dev` after editing `.env.local`
+- `Invalid username or password` on a correct password → the app client was
+  created **with** a secret, or `ALLOW_USER_PASSWORD_AUTH` is not enabled
+- `NotAuthorizedException: Password attempts exceeded` → wait a few minutes
 
 ## 📁 Project Structure
 
