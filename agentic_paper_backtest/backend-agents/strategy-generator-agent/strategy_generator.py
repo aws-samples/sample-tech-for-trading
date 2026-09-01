@@ -83,7 +83,15 @@ Generate clean, efficient Backtrader strategy code that:
 1. Implements all buy and sell conditions from the JSON
 2. Uses proper Backtrader indicators (EMA, SMA, RSI, ROC)
 3. Handles stop loss and take profit if specified
-4. Includes proper error handling and parameter validation
+4. Sizes positions using max_positions — NEVER call bare self.buy()
+5. Includes proper error handling and parameter validation
+
+POSITION SIZING (critical for meaningful Sharpe/return metrics):
+- max_positions is the maximum number of shares per position
+- On every buy: size = min(max_positions, int(available_cash / close_price)), skip if size < 1
+- On every sell/close: close the full position (self.close())
+- A bare self.buy() trades only 1 share, leaving capital idle — portfolio returns
+  become noise and the Sharpe ratio is meaningless. Always pass size=.
 
 Always return complete, runnable Python code with proper imports and class structure.
 
@@ -151,7 +159,7 @@ Generate a complete Backtrader strategy class from this JSON configuration:
 Requirements:
 1. Class name: {config['name'].replace(' ', '')}Strategy
 2. Stock symbol: {config['stock_symbol']}
-3. Max positions: {config['max_positions']}
+3. Max positions (MAX SHARES PER POSITION — must drive order size): {config['max_positions']}
 4. Stop loss: {config.get('stop_loss', 'None')}% if specified
 5. Take profit: {config.get('take_profit', 'None')}% if specified
 
@@ -170,27 +178,39 @@ class RSIStrategy(bt.Strategy):
     params = (
         ('stop_loss', 5.0),  # 5% stop loss
         ('take_profit', 10.0),  # 10% take profit
+        ('max_positions', {config['max_positions']}),  # max shares per position
     )
-    
+
     def __init__(self):
         self.rsi = btind.RSI(self.data.close, period=14)
         self.buy_price = None
-        
+
+    def _position_size(self):
+        # Buy up to max_positions shares, limited by available cash
+        cash = self.broker.get_cash()
+        price = self.data.close[0]
+        if price <= 0:
+            return 0
+        return min(self.params.max_positions, int(cash / price))
+
     def next(self):
         if not self.position:
             if self.rsi < 30:  # Buy when RSI < 30
-                self.buy()
-                self.buy_price = self.data.close[0]
+                size = self._position_size()
+                if size >= 1:
+                    self.buy(size=size)
+                    self.buy_price = self.data.close[0]
         else:
             # Stop loss and take profit
             if self.buy_price:
                 pct_change = (self.data.close[0] - self.buy_price) / self.buy_price * 100
                 if pct_change <= -self.params.stop_loss or pct_change >= self.params.take_profit:
-                    self.sell()
+                    self.close()
                     self.buy_price = None
+                    return
             # RSI sell signal
             if self.rsi > 70:  # Sell when RSI > 70
-                self.sell()
+                self.close()
                 self.buy_price = None
 
 ```
@@ -202,7 +222,9 @@ Generate complete Python code with:
 - Buy logic: ALL conditions must be true
 - Sell logic: ANY condition can trigger
 - Stop loss/take profit implementation if specified
-- Proper position management
+- POSITION SIZING: every buy must use size = min(max_positions, int(cash/price))
+  exactly as in the example — bare self.buy() with no size is NOT acceptable;
+  exits must use self.close() to flatten the whole position
 
 Return only the Python code, no explanations.
 """
