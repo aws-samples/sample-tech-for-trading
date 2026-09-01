@@ -80,5 +80,7 @@ Thumbs.db
 .bedrock_agentcore.yaml.*.bak
 .bedrock_agentcore/
 
-# Per-module fix-history docs (kept local only)
+# Per-module fix-history docs and session worklogs (kept local only)
 **/history/
+worklog.md
+todo.txt
