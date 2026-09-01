@@ -79,3 +79,6 @@ Thumbs.db
 .bedrock_agentcore.yaml
 .bedrock_agentcore.yaml.*.bak
 .bedrock_agentcore/
+
+# Per-module fix-history docs (kept local only)
+**/history/

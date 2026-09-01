@@ -284,42 +284,66 @@ The Quant Agent needs additional IAM permissions to authenticate with Cognito.
 
 ## Deploy Frontend
 
-The frontend provides a web interface for interacting with the Quant Agent system.
+The frontend provides a web interface for interacting with the Quant Agent system
+(PDF upload or manual buy/sell conditions).
 
-### Steps:
+### Step 1: Create the login user pool (Cognito)
 
-1. **Navigate to the frontend directory:**
-   ```bash
-   cd frontend-nextjs
-   ```
+The frontend requires login. Create a user pool with admin-only signup and an app
+client (no secret) with USER_PASSWORD_AUTH, then create your user:
 
-2. **Follow the deployment instructions:**
-   Refer to `frontend-nextjs/README.md` for detailed frontend deployment steps.
+```bash
+POOL_ID=$(aws cognito-idp create-user-pool \
+  --pool-name paper-backtest-frontend-auth \
+  --policies 'PasswordPolicy={MinimumLength=6,RequireUppercase=false,RequireLowercase=false,RequireNumbers=false,RequireSymbols=false}' \
+  --admin-create-user-config 'AllowAdminCreateUserOnly=true' \
+  --query 'UserPool.Id' --output text)
 
-   Quick summary:
-   ```bash
-   # Install dependencies
-   npm install
-   
-   # Configure environment variables
-   cp .env.example .env.local
-   # Edit .env.local with your Quant Agent Runtime ARN
-   
-   # Run development server
-   npm run dev
-   
-   # Or build for production
-   npm run build
-   npm start
-   ```
+CLIENT_ID=$(aws cognito-idp create-user-pool-client \
+  --user-pool-id "$POOL_ID" --client-name paper-backtest-web \
+  --no-generate-secret \
+  --explicit-auth-flows ALLOW_USER_PASSWORD_AUTH ALLOW_REFRESH_TOKEN_AUTH \
+  --query 'UserPoolClient.ClientId' --output text)
 
-For complete frontend deployment instructions, see: `frontend-nextjs/README.md`
+aws cognito-idp admin-create-user --user-pool-id "$POOL_ID" \
+  --username demo --message-action SUPPRESS
+aws cognito-idp admin-set-user-password --user-pool-id "$POOL_ID" \
+  --username demo --password 'YourPassword1' --permanent
+```
+
+### Step 2: Run locally
+
+```bash
+cd frontend
+npm install
+
+cp .env.example .env.local
+# Edit .env.local:
+#   AGENTCORE_ARN   = the paper_quant_agent runtime ARN (from step 1.3)
+#   AWS_REGION      = your region
+#   COGNITO_USER_POOL_ID / COGNITO_APP_CLIENT_ID / COGNITO_REGION = from Step 1
+
+npm run dev    # http://localhost:3000 — sign in with the user you created
+```
+
+### Step 3 (optional): Deploy to AWS (ECS + ALB + CloudFront)
+
+```bash
+cd frontend
+./deploy.sh    # creates ECR repo, builds/pushes the image, deploys the
+               # CloudFormation stack (VPC, ECS Fargate, ALB locked to
+               # CloudFront, CloudFront distribution)
+```
+
+The stack reads `AGENTCORE_ARN` and the `COGNITO_*` values from `.env.local`.
+Outputs include the CloudFront URL — the only public entry point.
 
 ### Test Frontend
 
-1. Open your browser to `http://localhost:3000` (or your deployed URL)
-2. Enter a trading strategy query
-3. Verify the complete workflow executes successfully
+1. Open `http://localhost:3000` (or the CloudFront URL) and sign in
+2. Upload a research paper PDF **or** switch to manual buy/sell conditions
+3. Verify the complete workflow executes and results render
+4. Try `/chat` to analyze past backtests across sessions
 
 
 ---
