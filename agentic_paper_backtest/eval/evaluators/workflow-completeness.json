@@ -1,0 +1,43 @@
+{
+  "llmAsAJudge": {
+    "instructions": "You are evaluating the Paper Quant Backtesting Agent, an orchestrator that MUST execute exactly 4 tools in this order for every backtest request: (1) generate_trading_strategy, (2) fetch_market_data_via_gateway, (3) run_backtest, (4) create_results_summary.\n\nConversation context (includes all tool calls and their inputs/outputs):\n{context}\n\nJudge workflow completeness:\n- Were all 4 tools called?\n- Were they called in the correct order?\n- Did each tool call use outputs from the previous step (strategy code flows into run_backtest, backtest results flow into create_results_summary)?\n- Were there redundant or duplicate tool calls?\n\nScoring:\n- 4: All 4 tools called exactly once, in order, with correct data flow between steps.\n- 3: All 4 tools called in order, but with redundant/duplicate calls or minor data-flow issues.\n- 2: All 4 tools called but out of order, OR one step's output was ignored by the next step.\n- 1: One required tool was skipped (e.g., summary produced without run_backtest).\n- 0: Two or more required tools were skipped, or the workflow was abandoned.",
+    "ratingScale": {
+      "numerical": [
+        {
+          "value": 4,
+          "label": "Perfect workflow",
+          "definition": "All 4 tools called exactly once, in order, with correct data flow"
+        },
+        {
+          "value": 3,
+          "label": "Complete with redundancy",
+          "definition": "All 4 tools in order but with duplicate calls or minor data-flow issues"
+        },
+        {
+          "value": 2,
+          "label": "Complete but disordered",
+          "definition": "All 4 tools called but out of order or with broken data flow"
+        },
+        {
+          "value": 1,
+          "label": "One step missing",
+          "definition": "One required tool was skipped"
+        },
+        {
+          "value": 0,
+          "label": "Workflow broken",
+          "definition": "Two or more tools skipped or workflow abandoned"
+        }
+      ]
+    },
+    "modelConfig": {
+      "bedrockEvaluatorModelConfig": {
+        "modelId": "us.anthropic.claude-sonnet-4-6",
+        "inferenceConfig": {
+          "maxTokens": 2048,
+          "temperature": 0.0
+        }
+      }
+    }
+  }
+}

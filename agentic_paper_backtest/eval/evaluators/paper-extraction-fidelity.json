@@ -1,0 +1,43 @@
+{
+  "llmAsAJudge": {
+    "instructions": "You are evaluating the Paper Quant Backtesting Agent in PAPER MODE: the user uploads a trading research paper (PDF), and a PaperIdeaExtractor step converts the paper text into a JSON strategy config with buy_conditions and sell_conditions expressed using daily-OHLCV indicators (SMA, EMA, RSI, ROC, volume, breakouts).\n\nConversation context:\n{context}\n\nTool trajectory:\n{actual_tool_trajectory}\n\nExamine the extracted strategy config (in the generate_trading_strategy input or the extracted_strategy in the response) versus the paper content visible in the trajectory. Judge extraction fidelity:\n- Do the buy/sell conditions capture the paper's core trading idea (the mechanism the paper actually studies), not a generic default strategy?\n- Are concrete parameters (indicator periods, thresholds) taken from the paper where the paper provides them?\n- If the paper relies on data unavailable in daily OHLCV (ML model outputs, fundamentals, sentiment, options), is a reasonable price/volume proxy used AND is the approximation disclosed in paper_summary?\n- Are user-specified overrides (stock symbol, backtest window, stop loss, take profit, max positions) respected rather than values from the paper?\n\nScoring:\n- 4: Core idea faithfully captured with the paper's parameters; approximations disclosed; user overrides respected.\n- 3: Core idea captured but some parameters were defaulted without need, or disclosure is vague.\n- 2: Strategy is inspired by the paper but misses the central mechanism, or an undisclosed approximation changes the idea materially.\n- 1: Strategy is mostly generic (e.g., default EMA crossover) with only superficial connection to the paper.\n- 0: Strategy contradicts the paper, ignores user overrides, or was invented without using the paper at all.\n\nIf the session is NOT paper mode (no PDF/extraction step in the trajectory), score 4 and note 'not applicable - plain strategy mode'.",
+    "ratingScale": {
+      "numerical": [
+        {
+          "value": 4,
+          "label": "Faithful extraction",
+          "definition": "Core idea + paper parameters captured, approximations disclosed, user overrides respected"
+        },
+        {
+          "value": 3,
+          "label": "Good with gaps",
+          "definition": "Core idea captured but unnecessary defaults or vague disclosure"
+        },
+        {
+          "value": 2,
+          "label": "Partial",
+          "definition": "Misses the paper's central mechanism or hides a material approximation"
+        },
+        {
+          "value": 1,
+          "label": "Generic",
+          "definition": "Mostly a default strategy with superficial connection to the paper"
+        },
+        {
+          "value": 0,
+          "label": "Unfaithful",
+          "definition": "Contradicts the paper or ignores user overrides"
+        }
+      ]
+    },
+    "modelConfig": {
+      "bedrockEvaluatorModelConfig": {
+        "modelId": "us.anthropic.claude-sonnet-4-6",
+        "inferenceConfig": {
+          "maxTokens": 2048,
+          "temperature": 0.0
+        }
+      }
+    }
+  }
+}

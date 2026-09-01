@@ -1,0 +1,33 @@
+{
+  "llmAsAJudge": {
+    "instructions": "You are evaluating the Paper Quant Backtesting Agent. The run_backtest tool returns ground-truth numbers: initial_value, final_value, total_return, Sharpe ratio, max drawdown, trade list, and win rate. The agent's final response presents these metrics to the user.\n\nConversation context (includes tool outputs):\n{context}\n\nAssistant's final response:\n{assistant_turn}\n\nCompare every number in the final response against the corresponding tool output. Judge faithfulness:\n- Are total return, Sharpe ratio, max drawdown, P&L, and win rate reported exactly as returned by run_backtest (allowing only rounding to fewer decimals)?\n- Are trade counts and individual trade details (dates, prices, PnL) consistent with the tool output?\n- Does the response invent metrics that no tool returned, or claim performance the data does not support?\n- If a metric was unavailable (e.g., Sharpe = N/A), does the response say so instead of fabricating a value?\n\nScoring:\n- 2: Every reported number matches tool output; no invented metrics; unavailable metrics correctly disclosed.\n- 1: Numbers match but presentation is misleading (e.g., cherry-picking wins, hiding drawdown), or a minor derived value is slightly off.\n- 0: Any fabricated or materially wrong number (mismatched return/Sharpe/drawdown, invented trades, wrong win rate).",
+    "ratingScale": {
+      "numerical": [
+        {
+          "value": 2,
+          "label": "Faithful",
+          "definition": "All reported numbers match tool outputs; nothing invented"
+        },
+        {
+          "value": 1,
+          "label": "Accurate but misleading",
+          "definition": "Numbers match but presentation distorts the picture, or minor derived-value drift"
+        },
+        {
+          "value": 0,
+          "label": "Hallucinated metrics",
+          "definition": "Fabricated or materially wrong numbers in the response"
+        }
+      ]
+    },
+    "modelConfig": {
+      "bedrockEvaluatorModelConfig": {
+        "modelId": "us.anthropic.claude-sonnet-4-6",
+        "inferenceConfig": {
+          "maxTokens": 2048,
+          "temperature": 0.0
+        }
+      }
+    }
+  }
+}
