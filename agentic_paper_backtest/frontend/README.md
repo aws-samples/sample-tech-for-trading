@@ -27,22 +27,22 @@ npm install
 
 ### 2. Configure Environment
 
-Copy `.env.example` to `.env.local` and add your credentials:
+Copy `.env.example` to `.env.local` and fill in your values (all are read
+server-side by Next.js API routes — never expose credentials with a
+`NEXT_PUBLIC_` prefix):
 
 ```env
-# For local development (server-side)
 AWS_REGION=us-east-1
-AGENTCORE_ARN=arn:aws:bedrock-agentcore:us-east-1:600627331406:runtime/quant_agent-D6li6lBv47
-AWS_ACCESS_KEY_ID=your_access_key
-AWS_SECRET_ACCESS_KEY=your_secret_key
-NEXT_PUBLIC_USE_MOCK_DATA=false
+AGENTCORE_ARN=arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/your-agent-runtime-id
 
-# For static deployment (client-side) - add NEXT_PUBLIC_ prefix
-NEXT_PUBLIC_AWS_REGION=us-east-1
-NEXT_PUBLIC_AGENTCORE_ARN=arn:aws:bedrock-agentcore:us-east-1:600627331406:runtime/quant_agent-D6li6lBv47
-NEXT_PUBLIC_AWS_ACCESS_KEY_ID=your_access_key
-NEXT_PUBLIC_AWS_SECRET_ACCESS_KEY=your_secret_key
+# Cognito login (see DEPLOYMENT_GUIDE.md for user pool creation)
+COGNITO_USER_POOL_ID=us-east-1_xxxxxxxxx
+COGNITO_APP_CLIENT_ID=your-app-client-id
+COGNITO_REGION=us-east-1
 ```
+
+AWS credentials come from your local AWS profile / IAM role (e.g.
+`AWS_PROFILE=default npm run dev`); do not put access keys in this file.
 
 ### 3. Run Development Server
 
