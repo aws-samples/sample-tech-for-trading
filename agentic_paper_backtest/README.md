@@ -43,8 +43,10 @@ reuses the resources already deployed by `agentic_backtesting`:
 
 ## Layout
 
-- `backend-agents/paper-quant-agent/` — the orchestrator agent (deployed to AgentCore Runtime)
-- `frontend/` — Next.js app with PDF upload (runs locally with `npm run dev`)
+- `backend-agents/` — pointer only: the orchestrator source is **merged into**
+  [`../agentic_backtesting/backend-agents/quant-agent/`](../agentic_backtesting/backend-agents/quant-agent/)
+  (one codebase, two runtimes — see [backend-agents/README.md](./backend-agents/README.md))
+- `frontend/` — Next.js app with PDF upload or manual buy/sell input (runs locally with `npm run dev`)
 - `eval/` — AgentCore Evaluation assets: 3 custom evaluators + scripts + guidance ([eval/README.md](./eval/README.md))
 
 ## Deployment
@@ -52,9 +54,9 @@ reuses the resources already deployed by `agentic_backtesting`:
 ### Backend (AgentCore, AWS profile `default`)
 
 ```bash
-cd backend-agents/paper-quant-agent
+cd ../agentic_backtesting/backend-agents/quant-agent
 # .env is pre-populated with the shared us-east-2 resources
-./deploy_to_agentcore.sh
+AGENT_NAME=paper_quant_agent ./deploy_to_agentcore.sh
 ```
 
 ### Frontend (local)
