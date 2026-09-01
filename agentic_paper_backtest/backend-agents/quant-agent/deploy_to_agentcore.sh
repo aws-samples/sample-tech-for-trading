@@ -8,7 +8,7 @@
 # Requires the Python starter-toolkit CLI (bedrock-agentcore-starter-toolkit),
 # NOT the Node/CDK "agentcore". Override with AGENTCORE_BIN if it lives in a venv.
 # Optionally set EXECUTION_ROLE to reuse a role that can already invoke the
-# downstream runtimes (see agentic_backtesting/history/004, Bug 3).
+# downstream runtimes (see history/agentic_backtesting/004-deploy-to-aws-us-east-2.md, Bug 3).
 set -e
 
 AGENTCORE_BIN="${AGENTCORE_BIN:-agentcore}"

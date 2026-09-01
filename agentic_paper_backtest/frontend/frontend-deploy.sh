@@ -6,9 +6,9 @@ echo "🚀 Frontend Code Update (paper backtest)"
 echo "========================================"
 
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-ECR_REPO_NAME="agentcore-paper-backtest-ecr"
+ECR_REPO_NAME="${ECR_REPO_NAME:-agentcore-paper-backtest-ecr}"
 ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.us-east-2.amazonaws.com/${ECR_REPO_NAME}"
-STACK_NAME="agentcore-paper-backtest"
+STACK_NAME="${STACK_NAME:-agentcore-paper-backtest}"
 
 echo "🐳 Building Docker image..."
 docker buildx build --platform linux/amd64 -t "$ECR_REPO_NAME" . --load

@@ -15,8 +15,9 @@ if [ -z "$AGENTCORE_ARN" ]; then
 fi
 
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.us-east-2.amazonaws.com/agentcore-paper-backtest-ecr"
-STACK_NAME="agentcore-paper-backtest"
+ECR_REPO_NAME="${ECR_REPO_NAME:-agentcore-paper-backtest-ecr}"
+ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.us-east-2.amazonaws.com/${ECR_REPO_NAME}"
+STACK_NAME="${STACK_NAME:-agentcore-paper-backtest}"
 
 # CloudFront origin-facing managed prefix list for this region
 CF_PREFIX_LIST_ID=$(aws ec2 describe-managed-prefix-lists \

@@ -1,11 +1,14 @@
-# Agentic Paper Backtest - Research Paper to Backtested Strategy
+# Agentic Paper Backtest - Multi-Agent Strategy Backtesting
 
-Upload a trading research paper (PDF) and let AI agents extract the trading idea,
-generate executable strategy code, fetch historical market data, and backtest it.
+Backtest trading strategies with a multi-agent system built on Strands and Amazon Bedrock
+AgentCore. Two ways to provide a strategy:
 
-A sibling project of [`agentic_backtesting`](../agentic_backtesting/): that project takes a
-trading idea typed by the user; this one derives the idea from an uploaded research paper,
-then reuses the exact same downstream pipeline.
+- **Upload a trading research paper (PDF)** — AI agents extract the trading idea,
+  generate executable strategy code, fetch historical market data, and backtest it
+- **Type buy/sell conditions manually** — the same pipeline runs on your own idea
+
+This project supersedes the former `agentic_backtesting` sample: the two codebases were
+merged (one backend source, one frontend that supports both strategy sources).
 
 ## Disclaimer
 
@@ -16,48 +19,50 @@ advice. Past performance does not guarantee future results.
 ## How It Works
 
 ```
-PDF upload (frontend)
-  └─> Paper Quant Agent (AgentCore Runtime)
-        1. pypdf extracts text from the PDF
-        2. PaperIdeaExtractor agent converts the paper into a JSON strategy config
-           (buy/sell conditions expressed with OHLCV indicators)
-        3. Standard 4-step quant workflow (same as agentic_backtesting):
-           a. Strategy Generator Runtime  -> Backtrader code
-           b. Market Data Gateway (MCP)   -> historical OHLCV from S3 Table
-           c. Code Interpreter sandbox    -> backtest execution
-           d. Results Summary Runtime     -> analysis report
+Frontend (PDF upload OR manual buy/sell conditions)
+  └─> Quant Agent (AgentCore Runtime, orchestrator)
+        0. [PDF mode only] pypdf extracts text; PaperIdeaExtractor agent converts the
+           paper into a JSON strategy config (OHLCV-indicator buy/sell conditions)
+        1. Strategy Generator Runtime  -> Backtrader code
+        2. Market Data Gateway (MCP)   -> historical OHLCV from S3 Table
+        3. Code Interpreter sandbox    -> backtest execution
+        4. Results Summary Runtime     -> analysis report
 ```
 
 The user chooses the **target stock** and **backtest window** (plus optional stop loss /
-take profit / max positions) in the frontend; these override anything in the paper.
-
-## Reused Infrastructure
-
-This project deploys **one new AgentCore Runtime** (`paper_quant_agent`, us-east-2) and
-reuses the resources already deployed by `agentic_backtesting`:
-
-- Strategy Generator Runtime (`STRATEGY_GENERATOR_RUNTIME_ARN`)
-- Results Summary Runtime (`BACKTEST_SUMMARY_RUNTIME_ARN`)
-- Market Data MCP Gateway + Cognito auth (`AGENTCORE_GATEWAY_URL`)
-- AgentCore Memory (`quant_agent` prefix)
+take profit / max positions) in the frontend; in PDF mode these override anything in
+the paper. A chat assistant analyzes historical backtests across sessions (AgentCore
+Memory with a semantic long-term strategy).
 
 ## Layout
 
-- `backend-agents/` — pointer only: the orchestrator source is **merged into**
-  [`../agentic_backtesting/backend-agents/quant-agent/`](../agentic_backtesting/backend-agents/quant-agent/)
-  (one codebase, two runtimes — see [backend-agents/README.md](./backend-agents/README.md))
-- `frontend/` — Next.js app with PDF upload or manual buy/sell input (runs locally with `npm run dev`)
-- `eval/` — AgentCore Evaluation assets: 3 custom evaluators + scripts + guidance ([eval/README.md](./eval/README.md))
+- `backend-agents/` — all agents:
+  - `quant-agent/` — the orchestrator, one codebase deployed as **two runtimes**
+    (`quant_agent` and `paper_quant_agent`) — see [its README](./backend-agents/quant-agent/README.md)
+  - `strategy-generator-agent/` — converts strategy JSON to Backtrader code (Runtime)
+  - `result-summarizer-agent/` — analyzes backtest results (Runtime)
+  - `strategy-generator-a2a-agent/` — optional A2A variant
+- `frontend/` — Next.js app: PDF upload or manual input, Cognito login, chat with
+  markdown rendering, interactive architecture diagram
+- `eval/` — AgentCore Evaluation assets: 3 custom evaluators + scripts + guidance
+  ([eval/README.md](./eval/README.md))
+- `docs/` — architecture and UI screenshots
+- `DEPLOYMENT_GUIDE.md` — full infrastructure setup (Gateway, Cognito, S3 Tables, agents)
 
 ## Deployment
 
 ### Backend (AgentCore, AWS profile `default`)
 
 ```bash
-cd ../agentic_backtesting/backend-agents/quant-agent
+cd backend-agents/quant-agent
 # .env is pre-populated with the shared us-east-2 resources
-AGENT_NAME=paper_quant_agent ./deploy_to_agentcore.sh
+AGENT_NAME=paper_quant_agent ./deploy_to_agentcore.sh   # paper-backtest runtime
+./deploy_to_agentcore.sh                                # legacy quant_agent runtime
 ```
+
+The strategy-generator / result-summarizer runtimes each have their own
+`deploy_to_agentcore.sh`; see `DEPLOYMENT_GUIDE.md` for the full stack
+(Market Data Gateway, Cognito, S3 Tables).
 
 ### Frontend (local)
 
@@ -86,7 +91,9 @@ cd frontend
 ./infra-deploy.sh      # infrastructure-only update
 ```
 
-Stack: `agentcore-paper-backtest` (us-east-2), ECR: `agentcore-paper-backtest-ecr`.
+Default stack: `agentcore-paper-backtest` (us-east-2), ECR: `agentcore-paper-backtest-ecr`.
+To update a second deployment (e.g. the legacy stack), override
+`STACK_NAME=... ECR_REPO_NAME=... ./frontend-deploy.sh`.
 
 ## Limitations
 
@@ -94,4 +101,4 @@ Stack: `agentcore-paper-backtest` (us-east-2), ECR: `agentcore-paper-backtest-ec
 - Papers relying on data beyond daily OHLCV (fundamentals, sentiment, options) are
   approximated with the closest price/volume proxy — the approximation is noted in the
   extracted strategy summary
-- Market data currently available for AMZN only (same S3 Table as agentic_backtesting)
+- Market data currently available for AMZN only (S3 Table)

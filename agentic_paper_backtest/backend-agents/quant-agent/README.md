@@ -2,10 +2,10 @@
 
 Single codebase serving **two AgentCore Runtimes**:
 
-| Runtime | Frontend | Strategy source |
+| Runtime | Used by | Strategy source |
 |---|---|---|
-| `quant_agent` | `agentic_backtesting/frontend` | manual buy/sell conditions |
-| `paper_quant_agent` | `agentic_paper_backtest/frontend` | research paper PDF **or** manual conditions |
+| `paper_quant_agent` | `../../frontend` (current deployment) | research paper PDF **or** manual conditions |
+| `quant_agent` | legacy deployment (kept for compatibility) | manual buy/sell conditions |
 
 ## Files
 

@@ -15,7 +15,7 @@ if [ -z "$AGENTCORE_ARN" ]; then
 fi
 
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-ECR_REPO_NAME="agentcore-paper-backtest-ecr"
+ECR_REPO_NAME="${ECR_REPO_NAME:-agentcore-paper-backtest-ecr}"
 ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.us-east-2.amazonaws.com/${ECR_REPO_NAME}"
 
 echo "✅ AWS Account: $AWS_ACCOUNT_ID"
