@@ -48,6 +48,11 @@ var/
 .installed.cfg
 *.egg
 .env
+# .env backup copies like ".env 10-24-05-302" (contain real secrets),
+# but keep .env.example / .env.sample tracked
+.env[ .]*
+!.env.example
+!.env.sample
 .venv
 venv/
 ENV/
