@@ -10,6 +10,22 @@ AgentCore. Two ways to provide a strategy:
 This project supersedes the former `agentic_backtesting` sample: the two codebases were
 merged (one backend source, one frontend that supports both strategy sources).
 
+## Inspiration
+
+This solution is inspired by [a talk from Aaron Linsky, CTO of AIA Labs at Bridgewater
+Associates](https://aws.amazon.com/ar/video/watch/5b319684c66/), about their journey
+integrating generative AI and large language models into their investment processes.
+Aaron discusses how Bridgewater is leveraging Amazon Bedrock to build an "Artificial
+Investment Associate" that can analyze data, generate hypotheses, and improve itself
+over time. He shares insights on their implementation approach, the benefits of using
+multiple AI models, and advice for other organizations embarking on generative AI
+initiatives.
+
+This sample explores those ideas at a smaller scale: multiple specialized agents
+(idea extraction, code generation, backtesting, analysis) collaborate on an investment
+research workflow, with evaluation and optimization loops that let the system's quality
+be measured and improved over time.
+
 ## Disclaimer
 
 **This project is for educational and research purposes only.** The backtesting results,
