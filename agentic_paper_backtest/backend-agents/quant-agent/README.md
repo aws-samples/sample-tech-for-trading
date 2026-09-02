@@ -1,33 +1,26 @@
 # Quant Agent (orchestrator)
 
-Single codebase serving **two AgentCore Runtimes**:
-
-| Runtime | Used by | Strategy source |
-|---|---|---|
-| `paper_quant_agent` | `../../frontend` (current deployment) | research paper PDF **or** manual conditions |
-| `quant_agent` | legacy deployment (kept for compatibility) | manual buy/sell conditions |
+Deployed as a single AgentCore Runtime: **`paper_quant_agent`**. It handles both
+strategy sources — a research paper PDF or manually typed buy/sell conditions —
+plus a chat mode for analyzing historical backtests.
 
 ## Files
 
 - `quant_agent.py` — entrypoint. Routes by payload:
   - `{"pdf_base64": ...}` → pypdf text extraction → PaperIdeaExtractor agent →
     strategy JSON → 4-step workflow
-  - `{"prompt": ...}` → 4-step workflow directly
+  - `{"prompt": ...}` → 4-step workflow directly (manual buy/sell conditions)
   - `{"mode": "chat", ...}` → history-analysis assistant
 - `config.py` — env/config, AWS clients, AgentCore Memory helpers
 - `tools/` — Strands tools: strategy generator (calls the Strategy Generator
   Runtime), market data via MCP Gateway, backtest in Code Interpreter sandbox,
   results summary, cross-session backtest history (semantic LTM + all-session scan)
-- `deploy_to_agentcore.sh` — deploys either runtime; see below
+- `deploy_to_agentcore.sh` — deploys the runtime
 
 ## Deploy
 
 ```bash
-# default runtime (quant_agent)
-./deploy_to_agentcore.sh
-
-# paper-backtest runtime
-AGENT_NAME=paper_quant_agent ./deploy_to_agentcore.sh
+./deploy_to_agentcore.sh    # deploys as paper_quant_agent
 ```
 
 Requires the Python starter-toolkit CLI (`bedrock-agentcore-starter-toolkit`);

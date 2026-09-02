@@ -53,8 +53,9 @@ Memory with a semantic long-term strategy).
 ## Layout
 
 - `backend-agents/` — all agents:
-  - `quant-agent/` — the orchestrator, one codebase deployed as **two runtimes**
-    (`quant_agent` and `paper_quant_agent`) — see [its README](./backend-agents/quant-agent/README.md)
+  - `quant-agent/` — the orchestrator, deployed as a single runtime
+    (`paper_quant_agent`) handling both PDF and manual strategy input —
+    see [its README](./backend-agents/quant-agent/README.md)
   - `strategy-generator-agent/` — converts strategy JSON to Backtrader code (Runtime)
   - `result-summarizer-agent/` — analyzes backtest results (Runtime)
   - `strategy-generator-a2a-agent/` — optional A2A variant
@@ -72,8 +73,7 @@ Memory with a semantic long-term strategy).
 ```bash
 cd backend-agents/quant-agent
 # .env is pre-populated with the shared us-east-2 resources
-AGENT_NAME=paper_quant_agent ./deploy_to_agentcore.sh   # paper-backtest runtime
-./deploy_to_agentcore.sh                                # legacy quant_agent runtime
+./deploy_to_agentcore.sh    # deploys the paper_quant_agent runtime
 ```
 
 The strategy-generator / result-summarizer runtimes each have their own

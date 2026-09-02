@@ -1,18 +1,16 @@
 #!/bin/bash
-# Deploy the quant agent to AgentCore Runtime.
-#
-# The same codebase serves two runtimes:
-#   ./deploy_to_agentcore.sh                          # deploys as quant_agent (default)
-#   AGENT_NAME=paper_quant_agent ./deploy_to_agentcore.sh   # deploys the paper-backtest runtime
+# Deploy the quant agent to AgentCore Runtime as `paper_quant_agent`.
+# One runtime handles both strategy sources: research-paper PDF and
+# manual buy/sell conditions (plus chat mode).
 #
 # Requires the Python starter-toolkit CLI (bedrock-agentcore-starter-toolkit),
 # NOT the Node/CDK "agentcore". Override with AGENTCORE_BIN if it lives in a venv.
 # Optionally set EXECUTION_ROLE to reuse a role that can already invoke the
-# downstream runtimes (see history/agentic_backtesting/004-deploy-to-aws-us-east-2.md, Bug 3).
+# downstream runtimes.
 set -e
 
 AGENTCORE_BIN="${AGENTCORE_BIN:-agentcore}"
-AGENT_NAME="${AGENT_NAME:-quant_agent}"
+AGENT_NAME="${AGENT_NAME:-paper_quant_agent}"
 EXECUTION_ROLE="${EXECUTION_ROLE:-}"
 
 # Load environment variables if .env exists
