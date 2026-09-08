@@ -126,6 +126,11 @@ async function processBacktest(jobId: string, strategyInput: any) {
     // quant_agent returns: {"result": "<LLM text>", "strategy_code": "...", "trades": [...], ...}
     // BedrockAgentCoreApp may also wrap as: {"result": {"content": [{"text": "..."}]}}
     let analysisText: string;
+    // Backend signals a hard failure (e.g. market data unavailable) as
+    // {"result": {"status": "error", "error": "..."}} — surface the real message
+    if (result.result?.status === 'error') {
+      throw new Error(result.result.error || 'Backtest failed');
+    }
     if (typeof result.result === 'string') {
       // Direct string response from quant_agent invoke()
       analysisText = result.result;

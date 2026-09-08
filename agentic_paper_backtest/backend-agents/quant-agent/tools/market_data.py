@@ -43,6 +43,13 @@ def extract_market_data_from_gateway_response(gateway_response: Dict[str, Any]) 
         result = gateway_response.get('result', {})
         content = result.get('content', [])
 
+        # Gateway reports target-side failures (e.g. Lambda access denied) as
+        # isError=true with a plain-text message — surface it instead of
+        # trying to parse it as market data.
+        if result.get('isError'):
+            gw_msg = content[0].get('text', 'unknown gateway error') if content else 'unknown gateway error'
+            raise ValueError(f"Gateway target error: {gw_msg}")
+
         if not content or not isinstance(content, list):
             raise ValueError("No content found in gateway response")
 
@@ -109,18 +116,8 @@ def extract_market_data_from_gateway_response(gateway_response: Dict[str, Any]) 
 
     except Exception as e:
         print(f"❌ Error extracting market data from gateway response: {e}")
-        # Return fallback structure
-        return {
-            'UNKNOWN': {
-                'daily_data': [],
-                'metadata': {
-                    'symbol': 'UNKNOWN',
-                    'total_rows': 0,
-                    'source': 'extraction_error',
-                    'error': str(e)
-                }
-            }
-        }
+        # Propagate: callers must not treat an empty/invalid response as data
+        raise
 
 
 def authenticate_with_cognito() -> str:
@@ -292,29 +289,33 @@ def fetch_market_data_via_gateway(symbol: str, start_date: str = None, end_date:
         # Call synchronous function directly with date range parameters
         gateway_response = call_gateway_market_data_with_cognito(symbol, start_date, end_date, limit)
 
-        # Extract structured data from gateway response
-        config._stored_market_data = extract_market_data_from_gateway_response(gateway_response)
+        # Extract structured data from gateway response (raises on failure)
+        extracted = extract_market_data_from_gateway_response(gateway_response)
+
+        symbol_key = next(iter(extracted))
+        metadata = extracted[symbol_key].get('metadata', {})
+        total_rows = metadata.get('total_rows', 0)
+        if total_rows == 0 or not extracted[symbol_key].get('daily_data'):
+            raise ValueError(f"Gateway returned 0 rows for {symbol} ({start_date} to {end_date})")
+
+        # Only publish data to the shared store once it is known-good
+        config._stored_market_data = extracted
 
         processing_time = time.time() - start_time
         print(f"⏱️ Market data fetch completed in {processing_time:.2f} seconds")
-        time.sleep(0.5)  # Brief pause to ensure completion
 
-        # Extract metadata for detailed success message
-        symbol_key = list(config._stored_market_data.keys())[0] if config._stored_market_data else symbol
-        if symbol_key in config._stored_market_data:
-            metadata = config._stored_market_data[symbol_key].get('metadata', {})
-            total_rows = metadata.get('total_rows', 0)
-            columns = metadata.get('columns', [])
-            source = metadata.get('source', 'unknown')
-            timestamp = metadata.get('timestamp', 'unknown')
-
-            columns_str = ', '.join(columns)
-            info = f"✅ Market data fetch successfully for {symbol_key} to have {total_rows} total_rows with columns [{columns_str}] from {source} at {timestamp}"
-            print(info)
-            return info
+        columns_str = ', '.join(metadata.get('columns', []))
+        info = (f"✅ Market data fetch successfully for {symbol_key} to have {total_rows} total_rows "
+                f"with columns [{columns_str}] from {metadata.get('source', 'unknown')} at {metadata.get('timestamp', 'unknown')}")
+        print(info)
+        return info
 
     except Exception as e:
         processing_time = time.time() - start_time
-        print(f"❌ AgentCore Gateway: Failed to fetch via Gateway after {processing_time:.2f} seconds - {str(e)}")
-
-    return "Failed to get market data"
+        # Clear any stale data so run_backtest cannot silently reuse a previous fetch
+        config._stored_market_data = {}
+        msg = (f"❌ MARKET DATA FETCH FAILED for {symbol} after {processing_time:.2f}s: {e}. "
+               f"The backtest cannot proceed without market data. Do NOT retry, do NOT use historical "
+               f"records as a substitute — report this error to the user.")
+        print(msg)
+        return msg

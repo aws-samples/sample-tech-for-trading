@@ -112,7 +112,9 @@ else
     echo "🆕 Function doesn't exist, creating new function..."
     
     # Get or create execution role
-    ROLE_NAME="market-data-lambda-container-role"
+    # Unique, region-scoped name: generic names collide with other stacks in the
+# same account (a workshop stack once deleted the shared role and broke this Lambda)
+ROLE_NAME="${MARKET_DATA_LAMBDA_ROLE:-market-data-lambda-role-use2-paperbacktest}"
     ROLE_ARN=""
     
     if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then

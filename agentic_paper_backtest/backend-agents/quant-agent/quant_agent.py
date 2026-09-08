@@ -179,7 +179,10 @@ CRITICAL RULES:
 - Do NOT ask for clarification - proceed with defaults AMZN 1-year if information is missing
 - Do NOT explain what you're going to do - just DO all 4 steps
 - Complete the entire workflow automatically and synchronously
-- Output the JSON output directly from create_results_summary to users """,
+- Output the JSON output directly from create_results_summary to users
+- FAILURE HANDLING: if fetch_market_data_via_gateway returns a message starting with "❌ MARKET DATA FETCH FAILED",
+  STOP immediately. Do NOT retry, do NOT call run_backtest, create_results_summary or get_backtest_history,
+  and do NOT substitute historical results. Respond with exactly one line: BACKTEST_FAILED: <the error message> """,
         tools=[
             fetch_market_data_via_gateway,
             generate_trading_strategy,
@@ -226,20 +229,26 @@ def _run_quant_workflow(prompt: str) -> dict:
 
     result = config._quant_agent(prompt)
 
-    # Use _last_backtest_result directly (set by run_backtest tool)
-    trades = []
-    trade_summary = {}
-    if config._last_backtest_result:
-        trades = config._last_backtest_result.get('trades', [])
-        trade_summary = config._last_backtest_result.get('trade_summary', {})
-        print(f"📊 Returning {len(trades)} trades from _last_backtest_result")
-    else:
-        print(f"⚠️ _last_backtest_result is None, falling back to Memory")
-        latest = config.get_backtest_results_from_memory()
-        if latest:
-            trades = latest.get('trades', [])
-            trade_summary = latest.get('trade_summary', {})
-            print(f"📊 Returning {len(trades)} trades from Memory")
+    # A backtest must have actually run in THIS request. If run_backtest never
+    # produced a result (e.g. market data fetch failed), return an explicit
+    # error instead of silently substituting stale records from Memory.
+    if not config._last_backtest_result or "error" in config._last_backtest_result:
+        agent_text = str(result.message.get('content', [{}])[0].get('text', '')) if isinstance(result.message, dict) else str(result.message)
+        detail = (config._last_backtest_result or {}).get("error") or agent_text.strip() or "backtest did not run"
+        print(f"❌ Workflow failed: {detail[:300]}")
+        return {
+            "result": {"status": "error", "error": f"Backtest failed: {detail}"},
+            "strategy_code": config._generated_strategy_code,
+            "versions": {
+                "quant_agent": config.VERSION,
+                "strategy_generator": config._strategy_generator_version,
+                "results_summary": config._results_summary_version
+            }
+        }
+
+    trades = config._last_backtest_result.get('trades', [])
+    trade_summary = config._last_backtest_result.get('trade_summary', {})
+    print(f"📊 Returning {len(trades)} trades from _last_backtest_result")
 
     # Build backtest_metrics from _last_backtest_result for frontend
     backtest_metrics = None

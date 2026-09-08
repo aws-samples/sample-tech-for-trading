@@ -84,3 +84,6 @@ Thumbs.db
 **/history/
 worklog.md
 todo.txt
+
+# Local test data (e.g. third-party research paper PDFs — not for the public repo)
+agentic_paper_backtest/data/
