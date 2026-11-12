@@ -8,11 +8,15 @@ echo "Using AWS Region: $AWS_REGION"
 echo "Using Bucket Name: $BUCKET_NAME"
 echo $BUCKET_NAME > ../terraform_state_bucket.txt
 
-# Check if bucket exists
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# Check if bucket exists and is owned by this account. Bucket names are global,
+# so a bucket we can access may belong to someone else; never treat it as ours.
 echo "Checking if bucket exists..."
-if aws s3api head-bucket --bucket $BUCKET_NAME 2>/dev/null; then
-    echo "Bucket $BUCKET_NAME already exists and you have access to it."
+if aws s3api head-bucket --bucket $BUCKET_NAME --expected-bucket-owner $ACCOUNT_ID 2>/dev/null; then
+    echo "Bucket $BUCKET_NAME already exists and is owned by account $ACCOUNT_ID."
 else
+    # If another account owns the name, create-bucket fails (BucketAlreadyExists) and we exit below.
     echo "Creating bucket $BUCKET_NAME in region $AWS_REGION..."
     
     # Create bucket with different commands based on region

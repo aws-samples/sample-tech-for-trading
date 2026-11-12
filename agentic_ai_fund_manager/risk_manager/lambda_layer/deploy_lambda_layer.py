@@ -22,38 +22,61 @@ class Config:
     REGION = GlobalConfig.REGION
     LAYER_NAME = GlobalConfig.LAMBDA_LAYER_NAME
 
-def setup_s3_bucket():
-    """Set up S3 bucket"""
+def get_account_id():
+    """Return the AWS account ID of the current credentials"""
+    sts_client = boto3.client('sts', region_name=Config.REGION)
+    return sts_client.get_caller_identity()["Account"]
+
+def setup_s3_bucket(account_id):
+    """Set up S3 bucket, failing closed if the name is owned by another account.
+
+    The bucket name is predictable, so anyone can pre-create it. A successful
+    head_bucket only proves we can access the bucket, not that we own it, so
+    every check pins ExpectedBucketOwner to our account.
+    """
     print("📦 Setting up S3 bucket...")
     s3_client = boto3.client('s3', region_name=Config.REGION)
-    sts_client = boto3.client('sts', region_name=Config.REGION)
-    
-    account_id = sts_client.get_caller_identity()["Account"]
     bucket_name = f"{Config.LAYER_NAME}-{account_id}"
-    
+
     try:
-        s3_client.head_bucket(Bucket=bucket_name)
+        s3_client.head_bucket(Bucket=bucket_name, ExpectedBucketOwner=account_id)
         return bucket_name
-        
+
     except s3_client.exceptions.ClientError as e:
-        if e.response['Error']['Code'] == '404':
-            if Config.REGION == 'us-east-1':
-                s3_client.create_bucket(Bucket=bucket_name)
-            else:
-                s3_client.create_bucket(
-                    Bucket=bucket_name,
-                    CreateBucketConfiguration={'LocationConstraint': Config.REGION}
-                )
-            return bucket_name
-        else:
+        code = e.response['Error']['Code']
+        if code == '403':
+            raise RuntimeError(
+                f"S3 bucket {bucket_name} exists but is not owned by account {account_id}. "
+                "Refusing to use it."
+            ) from e
+        if code != '404':
             raise
 
-def upload_layer_zip(zip_file_path, bucket_name):
-    """Upload Layer ZIP file to S3"""
+    try:
+        if Config.REGION == 'us-east-1':
+            s3_client.create_bucket(Bucket=bucket_name)
+        else:
+            s3_client.create_bucket(
+                Bucket=bucket_name,
+                CreateBucketConfiguration={'LocationConstraint': Config.REGION}
+            )
+    except s3_client.exceptions.BucketAlreadyOwnedByYou:
+        pass
+    except s3_client.exceptions.BucketAlreadyExists as e:
+        raise RuntimeError(
+            f"S3 bucket {bucket_name} was created by another account. Refusing to use it."
+        ) from e
+    return bucket_name
+
+def upload_layer_zip(zip_file_path, bucket_name, account_id):
+    """Upload Layer ZIP file to S3 (only if the bucket is still owned by us)"""
     s3_client = boto3.client('s3', region_name=Config.REGION)
     object_key = f"{Config.LAYER_NAME}.zip"
-    
-    s3_client.upload_file(zip_file_path, bucket_name, object_key)
+
+    s3_client.upload_file(
+        zip_file_path, bucket_name, object_key,
+        ExtraArgs={'ExpectedBucketOwner': account_id}
+    )
     return object_key
 
 def create_lambda_layer(bucket_name, s3_key):
@@ -98,10 +121,11 @@ def main():
             raise FileNotFoundError(f"Layer ZIP file not found: {Config.LAYER_NAME}.zip")
         
         # Set up S3 bucket
-        bucket_name = setup_s3_bucket()
-        
+        account_id = get_account_id()
+        bucket_name = setup_s3_bucket(account_id)
+
         # Upload ZIP file
-        s3_key = upload_layer_zip(str(zip_file), bucket_name)
+        s3_key = upload_layer_zip(str(zip_file), bucket_name, account_id)
         
         # Create Lambda Layer
         layer_result = create_lambda_layer(bucket_name, s3_key)
