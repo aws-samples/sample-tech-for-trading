@@ -115,23 +115,25 @@ def delete_s3_bucket(bucket_name, region):
     """Delete S3 bucket (including objects)"""
     try:
         s3 = boto3.client('s3', region_name=region)
-        
-        # Check if bucket exists
+        account_id = boto3.client('sts', region_name=region).get_caller_identity()["Account"]
+
+        # Check the bucket exists and is owned by this account
         try:
-            s3.head_bucket(Bucket=bucket_name)
+            s3.head_bucket(Bucket=bucket_name, ExpectedBucketOwner=account_id)
         except:
-            print(f"ℹ️ S3 bucket does not exist: {bucket_name}")
+            print(f"ℹ️ S3 bucket does not exist or is not owned by this account: {bucket_name}")
             return True
-        
+
         # Delete all objects in bucket
         paginator = s3.get_paginator('list_objects_v2')
-        for page in paginator.paginate(Bucket=bucket_name):
+        for page in paginator.paginate(Bucket=bucket_name, ExpectedBucketOwner=account_id):
             if 'Contents' in page:
                 objects = [{'Key': obj['Key']} for obj in page['Contents']]
-                s3.delete_objects(Bucket=bucket_name, Delete={'Objects': objects})
-        
+                s3.delete_objects(Bucket=bucket_name, Delete={'Objects': objects},
+                                  ExpectedBucketOwner=account_id)
+
         # Delete bucket
-        s3.delete_bucket(Bucket=bucket_name)
+        s3.delete_bucket(Bucket=bucket_name, ExpectedBucketOwner=account_id)
         print(f"✅ S3 bucket deleted: {bucket_name} (region: {region})")
         return True
     except Exception as e:
