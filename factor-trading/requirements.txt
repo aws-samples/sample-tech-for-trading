@@ -12,7 +12,7 @@ git+https://github.com/mementum/backtrader.git@0fa63ef4a35dc53cc7320813f8b15480c
 
 # Airflow dependencies
 apache-airflow==2.10.3
-apache-airflow-providers-amazon==8.1.0
+apache-airflow-providers-amazon==9.28.0
 
 # Development dependencies
 pytest>=7.4.0
