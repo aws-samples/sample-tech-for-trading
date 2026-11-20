@@ -51,32 +51,7 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_IAM \
   --region us-east-2
 
-echo ""
-echo "⚙️  Configuring timeouts..."
-
-# Configure ALB timeout
-ALB_ARN=$(aws cloudformation describe-stack-resources \
-  --stack-name "$STACK_NAME" \
-  --region us-east-2 \
-  --query 'StackResources[?ResourceType==`AWS::ElasticLoadBalancingV2::LoadBalancer`].PhysicalResourceId' \
-  --output text)
-
-aws elbv2 modify-load-balancer-attributes \
-  --load-balancer-arn "$ALB_ARN" \
-  --attributes Key=idle_timeout.timeout_seconds,Value=300 \
-  --region us-east-2 > /dev/null
-
-# Configure CloudFront timeout
-DIST_ID=$(aws cloudformation describe-stack-resources \
-  --stack-name "$STACK_NAME" \
-  --region us-east-2 \
-  --query 'StackResources[?ResourceType==`AWS::CloudFront::Distribution`].PhysicalResourceId' \
-  --output text)
-
-aws cloudfront get-distribution-config --id "$DIST_ID" --query 'DistributionConfig' --output json > /tmp/cf-config.json
-ETAG=$(aws cloudfront get-distribution-config --id "$DIST_ID" --query 'ETag' --output text)
-jq '.Origins.Items[0].CustomOriginConfig.OriginReadTimeout = 60 | .Origins.Items[0].CustomOriginConfig.OriginKeepaliveTimeout = 60' /tmp/cf-config.json > /tmp/cf-config-updated.json
-aws cloudfront update-distribution --id "$DIST_ID" --distribution-config file:///tmp/cf-config-updated.json --if-match "$ETAG" > /dev/null
+# ALB idle timeout and CloudFront origin timeouts are set in the template.
 
 echo ""
 echo "✅ Infrastructure deployed!"
