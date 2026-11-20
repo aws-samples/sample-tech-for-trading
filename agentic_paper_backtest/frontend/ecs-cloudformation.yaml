@@ -159,18 +159,38 @@ Resources:
           ToPort: 3000
           SourceSecurityGroupId: !Ref ALBSecurityGroup
 
-  # ALB
-  LoadBalancer:
+  # Internal ALB in private subnets; CloudFront reaches it through a VPC origin,
+  # so the ALB has no public IP. (Logical IDs differ from the old public ALB so
+  # CloudFormation creates the new ALB/target group before deleting the old ones.)
+  InternalLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Scheme: internet-facing
+      Scheme: internal
       Subnets:
-        - !Ref PublicSubnet1
-        - !Ref PublicSubnet2
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
       SecurityGroups:
         - !Ref ALBSecurityGroup
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '300'
 
-  TargetGroup:
+  # VPC Block Public Access (if enabled on the account) also drops CloudFront
+  # VPC origin traffic. Exclude only the private subnets: they route to the NAT
+  # gateway, not the internet gateway, so nothing in them becomes publicly reachable.
+  PrivateSubnet1BpaExclusion:
+    Type: AWS::EC2::VPCBlockPublicAccessExclusion
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      InternetGatewayExclusionMode: allow-bidirectional
+
+  PrivateSubnet2BpaExclusion:
+    Type: AWS::EC2::VPCBlockPublicAccessExclusion
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      InternetGatewayExclusionMode: allow-bidirectional
+
+  AppTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       VpcId: !Ref VPC
@@ -191,10 +211,10 @@ Resources:
         - Key: stickiness.lb_cookie.duration_seconds
           Value: '3600'
 
-  Listener:
+  InternalListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      LoadBalancerArn: !Ref LoadBalancer
+      LoadBalancerArn: !Ref InternalLoadBalancer
       Port: 80
       Protocol: HTTP
       DefaultActions:
@@ -205,10 +225,10 @@ Resources:
             MessageBody: Forbidden
 
   # Only requests carrying the CloudFront origin secret header reach the app
-  OriginVerifyListenerRule:
+  InternalOriginVerifyRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
-      ListenerArn: !Ref Listener
+      ListenerArn: !Ref InternalListener
       Priority: 1
       Conditions:
         - Field: http-header
@@ -218,7 +238,7 @@ Resources:
               - !Ref OriginVerifySecret
       Actions:
         - Type: forward
-          TargetGroupArn: !Ref TargetGroup
+          TargetGroupArn: !Ref AppTargetGroup
 
   # ECS Cluster
   ECSCluster:
@@ -305,7 +325,7 @@ Resources:
   # ECS Service
   ECSService:
     Type: AWS::ECS::Service
-    DependsOn: Listener
+    DependsOn: InternalOriginVerifyRule
     Properties:
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref TaskDefinition
@@ -322,7 +342,7 @@ Resources:
       LoadBalancers:
         - ContainerName: !Ref ServiceName
           ContainerPort: 3000
-          TargetGroupArn: !Ref TargetGroup
+          TargetGroupArn: !Ref AppTargetGroup
 
   # Auto Scaling Target
   ServiceScalingTarget:
@@ -362,25 +382,38 @@ Resources:
           PredefinedMetricType: ALBRequestCountPerTarget
           ResourceLabel: !Sub 
             - ${LoadBalancerFullName}/${TargetGroupFullName}
-            - LoadBalancerFullName: !GetAtt LoadBalancer.LoadBalancerFullName
-              TargetGroupFullName: !GetAtt TargetGroup.TargetGroupFullName
+            - LoadBalancerFullName: !GetAtt InternalLoadBalancer.LoadBalancerFullName
+              TargetGroupFullName: !GetAtt AppTargetGroup.TargetGroupFullName
         ScaleInCooldown: 300
         ScaleOutCooldown: 60
+
+  # CloudFront VPC origin: private connection from CloudFront to the internal ALB
+  ALBVpcOrigin:
+    Type: AWS::CloudFront::VpcOrigin
+    Properties:
+      VpcOriginEndpointConfig:
+        Name: !Sub ${ServiceName}-alb
+        Arn: !Ref InternalLoadBalancer
+        HTTPPort: 80
+        HTTPSPort: 443
+        OriginProtocolPolicy: http-only
 
   # CloudFront Distribution
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
+    DependsOn:
+      - PrivateSubnet1BpaExclusion
+      - PrivateSubnet2BpaExclusion
     Properties:
       DistributionConfig:
         Enabled: true
         Origins:
           - Id: ALBOrigin
-            DomainName: !GetAtt LoadBalancer.DNSName
-            CustomOriginConfig:
-              HTTPPort: 80
-              OriginProtocolPolicy: http-only
+            DomainName: !GetAtt InternalLoadBalancer.DNSName
+            VpcOriginConfig:
+              VpcOriginId: !GetAtt ALBVpcOrigin.Id
               OriginReadTimeout: 60
-              OriginKeepaliveTimeout: 5
+              OriginKeepaliveTimeout: 60
             OriginCustomHeaders:
               - HeaderName: X-Origin-Verify
                 HeaderValue: !Ref OriginVerifySecret
@@ -410,7 +443,7 @@ Resources:
 
 Outputs:
   LoadBalancerUrl:
-    Value: !GetAtt LoadBalancer.DNSName
+    Value: !GetAtt InternalLoadBalancer.DNSName
   CloudFrontUrl:
     Value: !GetAtt CloudFrontDistribution.DomainName
   ECSCluster:
